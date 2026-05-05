@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../lib/api';
+import { api, API_ORIGIN } from '../lib/api';
 
 type DatabaseInfo = {
   id: string;
@@ -159,10 +159,10 @@ export function PublicDatabase() {
 function ExportButtons({ baseUrl }: { baseUrl: string }) {
   return (
     <span style={{ display: 'flex', gap: '0.25rem' }}>
-      <a href={`/api/v1${baseUrl}?mode=full`} download style={smallBtnStyle}>
+      <a href={`${API_ORIGIN}/api/v1${baseUrl}?mode=full`} download style={smallBtnStyle}>
         Export PGN
       </a>
-      <a href={`/api/v1${baseUrl}?mode=stripped`} download style={{ ...smallBtnStyle, color: '#666' }}>
+      <a href={`${API_ORIGIN}/api/v1${baseUrl}?mode=stripped`} download style={{ ...smallBtnStyle, color: '#666' }}>
         Export (bez komentářů)
       </a>
     </span>

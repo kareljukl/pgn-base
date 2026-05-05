@@ -1,4 +1,8 @@
-const BASE_URL = '/api/v1';
+export const API_ORIGIN = import.meta.env.PROD
+  ? 'https://pgn-base-api.kareljukl.workers.dev'
+  : '';
+
+const BASE_URL = `${API_ORIGIN}/api/v1`;
 
 export class ApiError extends Error {
   constructor(

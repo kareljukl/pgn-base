@@ -5,4 +5,4 @@ compatibility_date = "2025-04-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "pgn-base-db"
-database_id = "local"
+database_id = "a9a08b8f-db2c-48ec-ba3c-20e4739eba14"

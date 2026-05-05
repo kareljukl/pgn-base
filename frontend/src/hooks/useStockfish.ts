@@ -29,7 +29,10 @@ export function useStockfish() {
       return;
     }
 
-    const worker = new Worker('/stockfish-18-single.js');
+    const workerUrl = import.meta.env.PROD
+      ? 'https://cdn.jsdelivr.net/npm/stockfish@18.0.7/bin/stockfish-18-single.js'
+      : '/stockfish-18-single.js';
+    const worker = new Worker(workerUrl);
     workerRef.current = worker;
 
     worker.onmessage = (e: MessageEvent<string>) => {

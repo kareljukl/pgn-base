@@ -23,8 +23,11 @@ export function useOpeningExplorer(fen: string) {
   const { data, isLoading } = useQuery({
     queryKey: ['opening-explorer', fen],
     queryFn: async () => {
+      const baseUrl = import.meta.env.PROD
+        ? 'https://lichess.org/api'
+        : '/lichess-explorer';
       const res = await fetch(
-        `/lichess-explorer/cloud-eval?fen=${encodeURIComponent(fen)}&multiPv=5`
+        `${baseUrl}/cloud-eval?fen=${encodeURIComponent(fen)}&multiPv=5`
       );
       if (!res.ok) return null;
       return res.json() as Promise<CloudEvalResponse>;

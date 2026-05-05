@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../lib/api';
+import { api, API_ORIGIN } from '../lib/api';
 import { ImportDialog } from '../components/ImportDialog';
 
 type Game = {
@@ -81,10 +81,10 @@ export function DatabaseDetail() {
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           {total > 0 && (
             <>
-              <a href={`/api/v1/databases/${id}/export?mode=full`} download style={exportBtnStyle}>
+              <a href={`${API_ORIGIN}/api/v1/databases/${id}/export?mode=full`} download style={exportBtnStyle}>
                 Export PGN
               </a>
-              <a href={`/api/v1/databases/${id}/export?mode=stripped`} download style={{ ...exportBtnStyle, color: '#666' }}>
+              <a href={`${API_ORIGIN}/api/v1/databases/${id}/export?mode=stripped`} download style={{ ...exportBtnStyle, color: '#666' }}>
                 Export (bez komentářů)
               </a>
             </>

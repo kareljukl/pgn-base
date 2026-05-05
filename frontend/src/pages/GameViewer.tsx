@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../lib/api';
+import { api, API_ORIGIN } from '../lib/api';
 import { useGameStore } from '../store/gameStore';
 import { Board } from '../components/Board/Board';
 import { MoveList } from '../components/MoveList/MoveList';
@@ -94,7 +94,7 @@ export function GameViewer() {
             {info.event}{info.date ? ` · ${info.date}` : ''}
           </span>
           <a
-            href={`/api/v1/databases/${id}/games/${gameId}/export?mode=full`}
+            href={`${API_ORIGIN}/api/v1/databases/${id}/games/${gameId}/export?mode=full`}
             download
             style={{ fontSize: '0.8rem', padding: '0.2rem 0.5rem', border: '1px solid #ddd', borderRadius: 4, background: '#fff', color: '#333', textDecoration: 'none' }}
           >

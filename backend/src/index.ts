@@ -11,7 +11,14 @@ const app = new Hono<AppEnv>();
 app.use(
   '/api/*',
   cors({
-    origin: ['http://localhost:5173'],
+    origin: (origin) => {
+      // Allow localhost in dev and the production Pages domain
+      if (!origin) return 'http://localhost:5173';
+      if (origin.includes('localhost')) return origin;
+      if (origin.endsWith('.pages.dev')) return origin;
+      if (origin.endsWith('.workers.dev')) return origin;
+      return 'http://localhost:5173';
+    },
     credentials: true,
   })
 );
