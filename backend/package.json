@@ -1,0 +1,21 @@
+{
+  "name": "pgn-base-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "db:init": "wrangler d1 execute pgn-base-db --local --file=src/db/schema.sql",
+    "db:seed": "wrangler d1 execute pgn-base-db --local --file=src/db/seed.sql",
+    "db:reset": "wrangler d1 execute pgn-base-db --local --file=src/db/schema.sql && wrangler d1 execute pgn-base-db --local --file=src/db/seed.sql",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "hono": "^4.7.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250430.0",
+    "typescript": "^5.8.0",
+    "wrangler": "^4.14.0"
+  }
+}
