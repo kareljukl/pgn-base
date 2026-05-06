@@ -6,18 +6,22 @@ import type { AppEnv } from '../types';
 
 const auth = new Hono<AppEnv>();
 
+function cookieOpts(c: { env: AppEnv['Bindings'] }, maxAge: number) {
+  const prod = isProduction(c);
+  return {
+    httpOnly: true,
+    secure: prod,
+    sameSite: prod ? 'None' : 'Lax',
+    maxAge,
+    path: '/',
+  } as const;
+}
+
 // Google OAuth — redirect to Google
 auth.get('/google', (c) => {
   const state = crypto.randomUUID();
 
-  // Store state in cookie for CSRF verification
-  setCookie(c, 'oauth_state', state, {
-    httpOnly: true,
-    secure: false,
-    sameSite: 'Lax',
-    maxAge: 300,
-    path: '/',
-  });
+  setCookie(c, 'oauth_state', state, cookieOpts(c, 300));
 
   const params = new URLSearchParams({
     client_id: c.env.GOOGLE_CLIENT_ID,
@@ -102,13 +106,7 @@ auth.get('/callback', async (c) => {
     c.env.JWT_SECRET
   );
 
-  setCookie(c, 'token', jwt, {
-    httpOnly: true,
-    secure: false,
-    sameSite: 'Lax',
-    maxAge: 7 * 86400,
-    path: '/',
-  });
+  setCookie(c, 'token', jwt, cookieOpts(c, 7 * 86400));
 
   const frontendUrl = c.env.FRONTEND_URL || 'http://localhost:5173';
   return c.redirect(frontendUrl);
@@ -133,13 +131,7 @@ auth.post('/dev-login', async (c) => {
     c.env.JWT_SECRET
   );
 
-  setCookie(c, 'token', jwt, {
-    httpOnly: true,
-    secure: false,
-    sameSite: 'Lax',
-    maxAge: 7 * 86400,
-    path: '/',
-  });
+  setCookie(c, 'token', jwt, cookieOpts(c, 7 * 86400));
 
   return c.json({ user });
 });
@@ -161,7 +153,6 @@ function getBackendUrl(c: { req: { url: string } }): string {
 }
 
 function isProduction(c: { env: AppEnv['Bindings'] }): boolean {
-  // Wrangler dev sets this; production Workers do not have it
   return c.env.FRONTEND_URL?.includes('localhost') === false
     && !c.env.FRONTEND_URL?.startsWith('http://localhost');
 }
