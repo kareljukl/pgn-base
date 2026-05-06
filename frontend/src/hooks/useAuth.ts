@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, API_ORIGIN } from '../lib/api';
+import { getToken, removeToken } from '../lib/auth';
 
 type User = {
   id: string;
@@ -12,9 +13,13 @@ type User = {
 export function useAuth() {
   const queryClient = useQueryClient();
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['auth', 'me'],
     queryFn: async () => {
+      // Don't call /me if no token stored (in production)
+      if (import.meta.env.PROD && !getToken()) {
+        return null;
+      }
       try {
         return await api.get<{ user: User }>('/auth/me');
       } catch (err) {
@@ -40,7 +45,12 @@ export function useAuth() {
   };
 
   const logout = async () => {
-    await api.post('/auth/logout');
+    removeToken();
+    try {
+      await api.post('/auth/logout');
+    } catch {
+      // ignore errors on logout
+    }
     queryClient.setQueryData(['auth', 'me'], null);
   };
 

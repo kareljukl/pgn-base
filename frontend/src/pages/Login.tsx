@@ -1,8 +1,26 @@
-import { Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { setToken } from '../lib/auth';
 
 export function Login() {
   const { isAuthenticated, isLoading, login, devLogin } = useAuth();
+  const navigate = useNavigate();
+
+  // Handle token from OAuth redirect (hash fragment)
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.startsWith('#token=')) {
+      const token = hash.slice(7);
+      setToken(token);
+      window.location.hash = '';
+      // Force re-check auth
+      window.location.href = '/';
+    }
+    if (hash.startsWith('#error=')) {
+      console.error('OAuth error:', hash.slice(7));
+    }
+  }, [navigate]);
 
   if (isLoading) {
     return (

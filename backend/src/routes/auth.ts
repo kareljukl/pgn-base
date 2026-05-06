@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
-import { signJwt, verifyJwt } from '../lib/jwt';
+import { signJwt } from '../lib/jwt';
 import { authRequired } from '../middleware/auth';
 import type { AppEnv } from '../types';
 
@@ -45,7 +45,8 @@ auth.get('/callback', async (c) => {
   deleteCookie(c, 'oauth_state', { path: '/' });
 
   if (!code || !state || state !== storedState) {
-    return c.json({ error: 'Neplatný OAuth state' }, 400);
+    const frontendUrl = c.env.FRONTEND_URL || 'http://localhost:5173';
+    return c.redirect(`${frontendUrl}/login#error=invalid_state`);
   }
 
   // Exchange code for tokens
@@ -62,7 +63,8 @@ auth.get('/callback', async (c) => {
   });
 
   if (!tokenRes.ok) {
-    return c.json({ error: 'Nepodařilo se získat token od Google' }, 400);
+    const frontendUrl = c.env.FRONTEND_URL || 'http://localhost:5173';
+    return c.redirect(`${frontendUrl}/login#error=token_exchange_failed`);
   }
 
   const tokens = await tokenRes.json<{ access_token: string }>();
@@ -73,7 +75,8 @@ auth.get('/callback', async (c) => {
   });
 
   if (!profileRes.ok) {
-    return c.json({ error: 'Nepodařilo se získat profil uživatele' }, 400);
+    const frontendUrl = c.env.FRONTEND_URL || 'http://localhost:5173';
+    return c.redirect(`${frontendUrl}/login#error=profile_fetch_failed`);
   }
 
   const profile = await profileRes.json<{
@@ -106,9 +109,15 @@ auth.get('/callback', async (c) => {
     c.env.JWT_SECRET
   );
 
-  setCookie(c, 'token', jwt, cookieOpts(c, 7 * 86400));
-
+  // In production: redirect with token in hash (avoids cross-domain cookie issues)
+  // In dev: set cookie (same origin, works fine)
   const frontendUrl = c.env.FRONTEND_URL || 'http://localhost:5173';
+
+  if (isProduction(c)) {
+    return c.redirect(`${frontendUrl}/login#token=${jwt}`);
+  }
+
+  setCookie(c, 'token', jwt, cookieOpts(c, 7 * 86400));
   return c.redirect(frontendUrl);
 });
 
