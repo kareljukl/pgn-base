@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, ApiError } from '../lib/api';
+import { api, ApiError, API_ORIGIN } from '../lib/api';
 
 type User = {
   id: string;
@@ -31,7 +31,7 @@ export function useAuth() {
   const user = data?.user ?? null;
 
   const login = () => {
-    window.location.href = '/api/v1/auth/google';
+    window.location.href = `${API_ORIGIN}/api/v1/auth/google`;
   };
 
   const devLogin = async () => {
