@@ -5,7 +5,7 @@ import type { AppEnv } from '../types';
 
 const games = new Hono<AppEnv>();
 
-const MAX_IMPORT_GAMES = 500;
+const MAX_IMPORT_GAMES = 1000;
 const MAX_IMPORT_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 type GameImport = {

@@ -40,8 +40,8 @@ export function ImportDialog({ databaseId, onDone, onCancel }: Props) {
         setParseError('Nebyly nalezeny žádné partie. Zkontrolujte formát PGN.');
         return;
       }
-      if (games.length > 500) {
-        setParseError(`Nalezeno ${games.length} partií. Maximum je 500 na jeden import.`);
+      if (games.length > 1000) {
+        setParseError(`Nalezeno ${games.length} partií. Maximum je 1000 na jeden import.`);
         return;
       }
       setParsed(games);

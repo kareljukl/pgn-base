@@ -3,3 +3,6 @@ dist/
 .wrangler/
 .dev.vars
 *.log
+
+# Stockfish WASM binaries (installed via npm, copied to public/)
+frontend/public/stockfish-*

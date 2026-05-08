@@ -1,8 +1,15 @@
 import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, API_ORIGIN } from '../lib/api';
 import { ImportDialog } from '../components/ImportDialog';
+
+type DatabaseInfo = {
+  id: string;
+  name: string;
+  description: string | null;
+  game_count: number;
+};
 
 type Game = {
   id: string;
@@ -25,6 +32,7 @@ type GamesResponse = {
 
 export function DatabaseDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showImport, setShowImport] = useState(false);
   const [search, setSearch] = useState('');
@@ -32,6 +40,13 @@ export function DatabaseDetail() {
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState('date');
   const [order, setOrder] = useState<'asc' | 'desc'>('desc');
+
+  const { data: dbList } = useQuery({
+    queryKey: ['databases'],
+    queryFn: () => api.get<{ databases: DatabaseInfo[] }>('/databases'),
+  });
+
+  const dbName = dbList?.databases.find((d) => d.id === id)?.name ?? '';
 
   // Debounce search
   const [debounceTimer, setDebounceTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
@@ -77,7 +92,7 @@ export function DatabaseDetail() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-        <h1 style={{ margin: 0 }}>Partie</h1>
+        <h1 style={{ margin: 0 }}>{dbName || 'Partie'}</h1>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           {total > 0 && (
             <>
@@ -139,11 +154,21 @@ export function DatabaseDetail() {
             </thead>
             <tbody>
               {games.map((game) => (
-                <tr key={game.id} style={{ borderBottom: '1px solid #eee' }}>
-                  <td style={tdStyle}>
-                    <Link to={`/db/${id}/game/${game.id}`}>
-                      {game.white || '?'}{game.white_elo ? ` (${game.white_elo})` : ''}
-                    </Link>
+                <tr
+                  key={game.id}
+                  style={{ borderBottom: '1px solid #eee', cursor: 'pointer' }}
+                  onClick={() => navigate(`/db/${id}/game/${game.id}`, {
+                    state: {
+                      filter: debouncedSearch,
+                      sort,
+                      order,
+                      dbName,
+                      dbId: id,
+                    },
+                  })}
+                >
+                  <td style={{ ...tdStyle, fontWeight: 500, color: '#2563eb' }}>
+                    {game.white || '?'}{game.white_elo ? ` (${game.white_elo})` : ''}
                   </td>
                   <td style={tdStyle}>
                     {game.black || '?'}{game.black_elo ? ` (${game.black_elo})` : ''}

@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, API_ORIGIN } from '../lib/api';
 import { useGameStore } from '../store/gameStore';
@@ -20,9 +20,38 @@ type GameData = {
   moves_pgn: string;
 };
 
+type SidebarGame = {
+  id: string;
+  white: string | null;
+  black: string | null;
+  result: string | null;
+};
+
+type SidebarContext = {
+  filter: string;
+  sort: string;
+  order: string;
+  dbName: string;
+  dbId: string;
+};
+
+type GamesResponse = {
+  games: SidebarGame[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+const PAGE_SIZE = 25;
+
 export function GameViewer() {
   const { id, gameId } = useParams<{ id: string; gameId: string }>();
-  const { loadGame, goForward, goBack, goToStart, goToEnd, currentFen, info, path, tree } = useGameStore();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { loadGame, goForward, goBack, goToStart, goToEnd, currentFen, info } = useGameStore();
+
+  const ctx = location.state as SidebarContext | null;
+  const hasSidebar = !!ctx?.dbId;
 
   const { data, isLoading } = useQuery({
     queryKey: ['game', id, gameId],
@@ -72,10 +101,17 @@ export function GameViewer() {
     return () => window.removeEventListener('keydown', handleKey);
   }, [goForward, goBack, goToStart, goToEnd]);
 
+  const handleSelectGame = (game: SidebarGame) => {
+    navigate(`/db/${ctx!.dbId}/game/${game.id}`, {
+      state: ctx,
+      replace: true,
+    });
+  };
+
   if (isLoading) return <p>Načítání...</p>;
   if (!data?.game) return <p>Partie nenalezena.</p>;
 
-  return (
+  const gameContent = (
     <div>
       {/* Game header */}
       <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -131,6 +167,175 @@ export function GameViewer() {
       </div>
     </div>
   );
+
+  return (
+    <div>
+      {/* Breadcrumb */}
+      <div style={{ marginBottom: '0.75rem', fontSize: '0.85rem', color: '#666' }}>
+        {hasSidebar ? (
+          <>
+            <span
+              onClick={() => navigate(-1)}
+              style={{ cursor: 'pointer', color: '#2563eb', textDecoration: 'none' }}
+            >
+              ← {ctx.dbName || 'Zpět na seznam'}
+            </span>
+            {ctx.filter && (
+              <span style={{ color: '#888' }}>{' '}· Filtr: „{ctx.filter}"</span>
+            )}
+          </>
+        ) : (
+          <Link to={`/db/${id}`} style={{ color: '#2563eb', textDecoration: 'none' }}>
+            ← Zpět na databázi
+          </Link>
+        )}
+      </div>
+
+      {/* Layout with optional sidebar */}
+      {hasSidebar ? (
+        <div style={{ display: 'grid', gridTemplateColumns: '220px 1px 1fr', gap: 0, minHeight: 0 }}>
+          {/* Sidebar */}
+          <Sidebar
+            dbId={ctx.dbId}
+            filter={ctx.filter}
+            sort={ctx.sort}
+            order={ctx.order}
+            activeGameId={gameId!}
+            onSelect={handleSelectGame}
+          />
+
+          {/* Divider */}
+          <div style={{ background: '#e0e0e0' }} />
+
+          {/* Game content */}
+          <div style={{ paddingLeft: '1rem', minWidth: 0 }}>
+            {gameContent}
+          </div>
+        </div>
+      ) : (
+        gameContent
+      )}
+    </div>
+  );
+}
+
+function Sidebar({ dbId, filter, sort, order, activeGameId, onSelect }: {
+  dbId: string;
+  filter: string;
+  sort: string;
+  order: string;
+  activeGameId: string;
+  onSelect: (game: SidebarGame) => void;
+}) {
+  const activeRef = useRef<HTMLDivElement>(null);
+  const [page, setPage] = useState(1);
+
+  const { data } = useQuery({
+    queryKey: ['sidebar-games', dbId, { q: filter, page, sort, order }],
+    queryFn: () => {
+      const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE), sort, order });
+      if (filter) params.set('q', filter);
+      return api.get<GamesResponse>(`/databases/${dbId}/games?${params}`);
+    },
+  });
+
+  const games = data?.games ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  useEffect(() => {
+    if (activeRef.current) {
+      activeRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [activeGameId, page]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 140px)' }}>
+      {/* Header with pagination — fixed */}
+      <div style={{ padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+        <span style={{ fontSize: '10px', textTransform: 'uppercase', color: '#999', letterSpacing: '0.05em' }}>
+          {total} partií
+        </span>
+        {totalPages > 1 && (
+          <>
+            <button
+              onClick={() => setPage(Math.max(1, page - 1))}
+              disabled={page <= 1}
+              style={paginationBtnStyle}
+            >
+              ◀
+            </button>
+            <span style={{ fontSize: '10px', color: '#999' }}>{page}/{totalPages}</span>
+            <button
+              onClick={() => setPage(Math.min(totalPages, page + 1))}
+              disabled={page >= totalPages}
+              style={paginationBtnStyle}
+            >
+              ▶
+            </button>
+          </>
+        )}
+      </div>
+      {/* Scrollable game list */}
+      <div style={{ overflowY: 'auto', flex: 1 }}>
+        {games.map((game) => {
+          const isActive = game.id === activeGameId;
+          return (
+            <div
+              key={game.id}
+              ref={isActive ? activeRef : null}
+              onClick={() => onSelect(game)}
+              style={{
+                padding: '0.35rem 0.75rem',
+                cursor: 'pointer',
+                borderLeft: isActive ? '3px solid #2563eb' : '3px solid transparent',
+                background: isActive ? '#eff6ff' : undefined,
+                transition: 'background 0.1s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive) e.currentTarget.style.background = '#f9fafb';
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) e.currentTarget.style.background = '';
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {game.white || '?'}
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#555', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {game.black || '?'}
+                </div>
+              </div>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: resultColor(game.result), flexShrink: 0 }}>
+                {game.result || '*'}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const paginationBtnStyle: React.CSSProperties = {
+  padding: '0 4px',
+  fontSize: '10px',
+  cursor: 'pointer',
+  border: '1px solid #ddd',
+  borderRadius: 3,
+  background: '#fff',
+  color: '#666',
+  lineHeight: '16px',
+};
+
+function resultColor(result: string | null): string {
+  if (result === '1-0') return '#16a34a';
+  if (result === '0-1') return '#dc2626';
+  return '#888';
 }
 
 function NavButton({ onClick, label, title }: { onClick: () => void; label: string; title: string }) {

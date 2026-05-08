@@ -21,10 +21,13 @@ export function MoveList() {
       ref={containerRef}
       style={{
         overflowY: 'auto',
+        overflowX: 'hidden',
         maxHeight: 480,
         padding: '0.5rem',
         fontSize: '0.9rem',
         lineHeight: 1.7,
+        wordWrap: 'break-word',
+        overflowWrap: 'break-word',
       }}
     >
       <Moves
@@ -97,6 +100,7 @@ function Moves({
           fontWeight: isActive ? 700 : 400,
           background: isActive ? '#e0e7ff' : 'transparent',
           marginRight: 2,
+          whiteSpace: 'nowrap',
         }}
       >
         {move.san}

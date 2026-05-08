@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, API_ORIGIN } from '../lib/api';
-import { getToken, removeToken } from '../lib/auth';
+import { getToken, setToken, removeToken } from '../lib/auth';
 
 type User = {
   id: string;
@@ -16,8 +16,7 @@ export function useAuth() {
   const { data, isLoading } = useQuery({
     queryKey: ['auth', 'me'],
     queryFn: async () => {
-      // Don't call /me if no token stored (in production)
-      if (import.meta.env.PROD && !getToken()) {
+      if (!getToken()) {
         return null;
       }
       try {
@@ -40,7 +39,8 @@ export function useAuth() {
   };
 
   const devLogin = async () => {
-    await api.post('/auth/dev-login');
+    const res = await api.post<{ user: User; token: string }>('/auth/dev-login');
+    if (res.token) setToken(res.token);
     queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
   };
 

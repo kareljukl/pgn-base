@@ -142,7 +142,7 @@ auth.post('/dev-login', async (c) => {
 
   setCookie(c, 'token', jwt, cookieOpts(c, 7 * 86400));
 
-  return c.json({ user });
+  return c.json({ user, token: jwt });
 });
 
 // Current user
