@@ -33,7 +33,7 @@ export function useStockfish() {
 
     if (import.meta.env.PROD) {
       // Cross-origin workers require blob URL workaround
-      const cdnUrl = 'https://cdn.jsdelivr.net/npm/stockfish@18.0.7/bin/stockfish-18-single.js';
+      const cdnUrl = 'https://unpkg.com/stockfish@18.0.7/bin/stockfish-18-single.js';
       const blob = new Blob(
         [`importScripts("${cdnUrl}");`],
         { type: 'application/javascript' }
