@@ -145,11 +145,27 @@ Funkce:
 
 ---
 
-## 7. Co není součástí MVP
+## 7. Stav implementace
 
-- Editace tahů a hlaviček (Fáze 2)
-- Vytváření partie od nuly přes šachovnici (Fáze 2)
-- Komentáře a glyfy přes UI — zobrazení ano, editace ne (Fáze 2)
-- Admin panel (Fáze 2)
-- Sdílené klubové databáze (Fáze 3)
-- Mobile optimalizace (Fáze 3)
+### Dokončeno (MVP)
+- Google OAuth přihlášení + JWT autentizace
+- CRUD databází (max 50/uživatel, veřejné/soukromé)
+- PGN import (soubor/text, max 1000 partií, max 10MB)
+- Seznam partií s filtrováním, řazením, stránkováním
+- Prohlížení partií: Chessground šachovnice, vlastní PGN parser s variantami/komentáři/NAG
+- Stockfish 18 WASM analýza (Web Worker)
+- Lichess Cloud Eval integrace
+- Export PGN (plný/stripped)
+- Veřejné databáze (read-only, bez přihlášení)
+- Kontextový sidebar partií v prohlížeči (navigace z vyfiltrovaného seznamu)
+- Deployment na Cloudflare (Worker + Pages + D1)
+
+### Fáze 2 (plánováno)
+- Editace tahů a hlaviček
+- Vytváření partie od nuly přes šachovnici
+- Komentáře a glyfy přes UI (zobrazení funguje, editace ne)
+- Admin panel
+
+### Fáze 3 (plánováno)
+- Sdílené klubové databáze
+- Mobile optimalizace
