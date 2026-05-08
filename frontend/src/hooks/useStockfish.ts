@@ -32,13 +32,15 @@ export function useStockfish() {
     let worker: Worker;
 
     if (import.meta.env.PROD) {
-      // Cross-origin workers require blob URL workaround
-      const cdnUrl = 'https://unpkg.com/stockfish@18.0.7/bin/stockfish-18-single.js';
+      // Cross-origin workers require blob URL workaround.
+      // Stockfish reads WASM path from self.location.hash — pass it via blob URL hash.
+      const cdnBase = 'https://unpkg.com/stockfish@18.0.7/bin';
       const blob = new Blob(
-        [`importScripts("${cdnUrl}");`],
+        [`importScripts("${cdnBase}/stockfish-18-single.js");`],
         { type: 'application/javascript' }
       );
-      worker = new Worker(URL.createObjectURL(blob));
+      const blobUrl = URL.createObjectURL(blob);
+      worker = new Worker(blobUrl + '#' + encodeURIComponent(`${cdnBase}/stockfish-18-single.wasm`));
     } else {
       worker = new Worker('/stockfish-18-single.js');
     }
