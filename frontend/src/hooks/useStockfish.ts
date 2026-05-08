@@ -29,10 +29,19 @@ export function useStockfish() {
       return;
     }
 
-    const workerUrl = import.meta.env.PROD
-      ? 'https://cdn.jsdelivr.net/npm/stockfish@18.0.7/bin/stockfish-18-single.js'
-      : '/stockfish-18-single.js';
-    const worker = new Worker(workerUrl);
+    let worker: Worker;
+
+    if (import.meta.env.PROD) {
+      // Cross-origin workers require blob URL workaround
+      const cdnUrl = 'https://cdn.jsdelivr.net/npm/stockfish@18.0.7/bin/stockfish-18-single.js';
+      const blob = new Blob(
+        [`importScripts("${cdnUrl}");`],
+        { type: 'application/javascript' }
+      );
+      worker = new Worker(URL.createObjectURL(blob));
+    } else {
+      worker = new Worker('/stockfish-18-single.js');
+    }
     workerRef.current = worker;
 
     worker.onmessage = (e: MessageEvent<string>) => {
