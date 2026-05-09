@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
 
 export type BookMove = {
@@ -25,9 +25,10 @@ type LichessExplorerResponse = {
   }[];
 };
 
-export function useOpeningBook(fen: string) {
+export function useOpeningBook(fen: string, enabled: boolean) {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['opening-book', fen],
+    enabled,
     queryFn: async () => {
       try {
         return await api.get<LichessExplorerResponse>(
@@ -41,6 +42,7 @@ export function useOpeningBook(fen: string) {
         throw err;
       }
     },
+    placeholderData: keepPreviousData,
     staleTime: 5 * 60_000,
     gcTime: 30 * 60_000,
     retry: false,

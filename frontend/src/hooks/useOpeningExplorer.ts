@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 
 type CloudEvalPv = {
   moves: string;
@@ -32,6 +32,7 @@ export function useOpeningExplorer(fen: string) {
       if (!res.ok) return null;
       return res.json() as Promise<CloudEvalResponse>;
     },
+    placeholderData: keepPreviousData,
     staleTime: 5 * 60_000,
     gcTime: 30 * 60_000,
     retry: false,

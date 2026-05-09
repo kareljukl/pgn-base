@@ -254,7 +254,7 @@ function Sidebar({ dbId, filter, sort, order, activeGameId, onSelect }: {
   }, [activeGameId, page]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 140px)' }}>
+    <div>
       {/* Header with pagination — fixed */}
       <div style={{ padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
         <span style={{ fontSize: '10px', textTransform: 'uppercase', color: '#999', letterSpacing: '0.05em' }}>
@@ -281,7 +281,7 @@ function Sidebar({ dbId, filter, sort, order, activeGameId, onSelect }: {
         )}
       </div>
       {/* Scrollable game list */}
-      <div style={{ overflowY: 'auto', flex: 1 }}>
+      <div>
         {games.map((game) => {
           const isActive = game.id === activeGameId;
           return (
