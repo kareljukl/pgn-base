@@ -4,6 +4,7 @@ export type Bindings = {
   GOOGLE_CLIENT_SECRET: string;
   JWT_SECRET: string;
   FRONTEND_URL: string;
+  LICHESS_TOKEN: string;
 };
 
 export type User = {

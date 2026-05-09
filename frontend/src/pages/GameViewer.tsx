@@ -7,6 +7,7 @@ import { Board } from '../components/Board/Board';
 import { MoveList } from '../components/MoveList/MoveList';
 import { Analysis } from '../components/Analysis/Analysis';
 import { OpeningExplorer } from '../components/OpeningExplorer/OpeningExplorer';
+import { OpeningBook } from '../components/OpeningBook/OpeningBook';
 
 type GameData = {
   id: string;
@@ -156,8 +157,11 @@ export function GameViewer() {
           {/* Stockfish Analysis */}
           <Analysis fen={currentFen} />
 
-          {/* Opening Explorer */}
+          {/* Cloud Eval */}
           <OpeningExplorer fen={currentFen} />
+
+          {/* Opening Book (Masters) */}
+          <OpeningBook fen={currentFen} />
         </div>
 
         {/* Right column: Move list */}
