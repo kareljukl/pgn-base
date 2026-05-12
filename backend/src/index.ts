@@ -8,17 +8,22 @@ import type { AppEnv } from './types';
 
 const app = new Hono<AppEnv>();
 
-function getAllowedOrigin(origin: string | undefined): string {
+function getAllowedOrigin(origin: string | undefined, frontendUrl?: string): string {
   if (!origin) return 'http://localhost:5173';
   if (origin.includes('localhost') || origin.endsWith('.pages.dev') || origin.endsWith('.workers.dev')) {
     return origin;
+  }
+  if (frontendUrl) {
+    try {
+      if (origin === new URL(frontendUrl).origin) return origin;
+    } catch {}
   }
   return 'http://localhost:5173';
 }
 
 app.use('/api/*', async (c, next) => {
   const origin = c.req.header('Origin');
-  const allowedOrigin = getAllowedOrigin(origin);
+  const allowedOrigin = getAllowedOrigin(origin, c.env.FRONTEND_URL);
 
   if (c.req.method === 'OPTIONS') {
     return new Response(null, {
