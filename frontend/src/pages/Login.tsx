@@ -75,6 +75,14 @@ export function Login() {
             Dev Login (testovací uživatel)
           </button>
         )}
+        <div style={{ marginTop: '1.5rem', borderTop: '1px solid #eee', paddingTop: '1.25rem' }}>
+          <a
+            href="/public"
+            style={{ fontSize: '0.875rem', color: '#555', textDecoration: 'none' }}
+          >
+            Procházet veřejné databáze bez přihlášení →
+          </a>
+        </div>
       </div>
     </div>
   );

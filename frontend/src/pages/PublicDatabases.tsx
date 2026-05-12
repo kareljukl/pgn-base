@@ -12,12 +12,13 @@ type PublicDatabase = {
 };
 
 export function PublicDatabases() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['public', 'databases'],
     queryFn: () => api.get<{ databases: PublicDatabase[] }>('/public/databases'),
   });
 
   if (isLoading) return <p>Načítání...</p>;
+  if (isError) return <p style={{ color: '#dc2626' }}>Chyba při načítání: {String(error)}</p>;
 
   const databases = data?.databases ?? [];
 
