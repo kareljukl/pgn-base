@@ -123,7 +123,16 @@ export function PublicDatabase() {
               {games.map((game) => (
                 <tr key={game.id} style={{ borderBottom: '1px solid #eee' }}>
                   <td style={tdStyle}>
-                    <Link to={`/public/${id}/game/${game.id}`}>
+                    <Link
+                      to={`/public/${id}/game/${game.id}`}
+                      state={{
+                        filter: debouncedSearch,
+                        sort,
+                        order,
+                        dbName: db?.name ?? '',
+                        dbId: id,
+                      }}
+                    >
                       {game.white || '?'}{game.white_elo ? ` (${game.white_elo})` : ''}
                     </Link>
                   </td>
