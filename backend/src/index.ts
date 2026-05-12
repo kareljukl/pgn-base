@@ -1,5 +1,4 @@
 import { Hono } from 'hono';
-import { cors } from 'hono/cors';
 import { auth } from './routes/auth';
 import { databases } from './routes/databases';
 import { games } from './routes/games';
@@ -9,20 +8,40 @@ import type { AppEnv } from './types';
 
 const app = new Hono<AppEnv>();
 
-app.use(
-  '/api/*',
-  cors({
-    origin: (origin) => {
-      // Allow localhost in dev and the production Pages domain
-      if (!origin) return 'http://localhost:5173';
-      if (origin.includes('localhost')) return origin;
-      if (origin.endsWith('.pages.dev')) return origin;
-      if (origin.endsWith('.workers.dev')) return origin;
-      return 'http://localhost:5173';
-    },
-    credentials: true,
-  })
-);
+function getAllowedOrigin(origin: string | undefined): string {
+  if (!origin) return 'http://localhost:5173';
+  if (origin.includes('localhost') || origin.endsWith('.pages.dev') || origin.endsWith('.workers.dev')) {
+    return origin;
+  }
+  return 'http://localhost:5173';
+}
+
+app.use('/api/*', async (c, next) => {
+  const origin = c.req.header('Origin');
+  const allowedOrigin = getAllowedOrigin(origin);
+
+  if (c.req.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        'Access-Control-Allow-Origin': allowedOrigin,
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+        'Access-Control-Allow-Credentials': 'true',
+        'Access-Control-Max-Age': '86400',
+        'Vary': 'Origin',
+      },
+    });
+  }
+
+  await next();
+
+  const headers = new Headers(c.res.headers);
+  headers.set('Access-Control-Allow-Origin', allowedOrigin);
+  headers.set('Access-Control-Allow-Credentials', 'true');
+  headers.set('Vary', 'Origin');
+  c.res = new Response(c.res.body, { status: c.res.status, statusText: c.res.statusText, headers });
+});
 
 app.get('/api/v1/health', (c) => {
   return c.json({ status: 'ok' });
