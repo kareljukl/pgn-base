@@ -5,6 +5,7 @@ import { Login } from './pages/Login';
 import { Databases } from './pages/Databases';
 import { DatabaseDetail } from './pages/DatabaseDetail';
 import { GameViewer } from './pages/GameViewer';
+import { GameEditor } from './pages/GameEditor';
 import { PublicDatabases } from './pages/PublicDatabases';
 import { PublicDatabase } from './pages/PublicDatabase';
 import { PublicGameViewer } from './pages/PublicGameViewer';
@@ -19,6 +20,7 @@ export function App() {
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<Databases />} />
           <Route path="/db/:id" element={<DatabaseDetail />} />
+          <Route path="/db/:id/game/new" element={<GameEditor />} />
           <Route path="/db/:id/game/:gameId" element={<GameViewer />} />
         </Route>
         {/* Public routes — no auth required */}

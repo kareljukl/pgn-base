@@ -23,6 +23,10 @@ type LichessExplorerResponse = {
     black: number;
     averageRating: number;
   }[];
+  opening?: {
+    eco: string;
+    name: string;
+  } | null;
 };
 
 export function useOpeningBook(fen: string, enabled: boolean) {

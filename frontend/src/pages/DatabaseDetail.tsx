@@ -104,6 +104,9 @@ export function DatabaseDetail() {
               </a>
             </>
           )}
+          <button onClick={() => navigate(`/db/${id}/game/new`)} style={btnStyle}>
+            + Nová partie
+          </button>
           <button onClick={() => setShowImport(true)} style={btnStyle}>
             Importovat partie
           </button>

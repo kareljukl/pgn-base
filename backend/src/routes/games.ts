@@ -106,10 +106,13 @@ games.post('/:dbId/games', authRequired, async (c) => {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
+  const ids: string[] = [];
   const batch = body.games.map((game) => {
     const h = game.headers;
+    const id = crypto.randomUUID();
+    ids.push(id);
     return stmt.bind(
-      crypto.randomUUID(),
+      id,
       dbId,
       h.Event || null,
       h.Site || null,
@@ -137,7 +140,7 @@ games.post('/:dbId/games', authRequired, async (c) => {
     'UPDATE databases SET updated_at = ? WHERE id = ?'
   ).bind(now, dbId).run();
 
-  return c.json({ imported: body.games.length }, 201);
+  return c.json({ imported: body.games.length, ids }, 201);
 });
 
 // Get single game
