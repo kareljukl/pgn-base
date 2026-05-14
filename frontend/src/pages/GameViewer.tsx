@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import type { DrawShape } from 'chessground/draw';
 import { api, API_ORIGIN } from '../lib/api';
 import { useGameStore } from '../store/gameStore';
 import { Board } from '../components/Board/Board';
@@ -54,6 +55,11 @@ export function GameViewer() {
   const location = useLocation();
   const navigate = useNavigate();
   const { loadGame, goForward, goBack, goToStart, goToEnd, currentFen, info } = useGameStore();
+  const [bestMoveArrow, setBestMoveArrow] = useState<DrawShape | null>(null);
+
+  const handleBestMove = useCallback((uci: string | null) => {
+    setBestMoveArrow(uci ? { orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: 'green' } as DrawShape : null);
+  }, []);
 
   const ctx = location.state as SidebarContext | null;
   const hasSidebar = !!ctx?.dbId;
@@ -155,7 +161,7 @@ export function GameViewer() {
       <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
         {/* Left column: Board + controls + analysis */}
         <div style={{ flex: '0 0 auto', width: 'min(480px, 100%)' }}>
-          <Board fen={currentFen} />
+          <Board fen={currentFen} autoShapes={bestMoveArrow ? [bestMoveArrow] : []} />
 
           {/* Navigation buttons */}
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', justifyContent: 'center' }}>
@@ -166,7 +172,7 @@ export function GameViewer() {
           </div>
 
           {/* Stockfish Analysis */}
-          <Analysis fen={currentFen} />
+          <Analysis fen={currentFen} onBestMove={handleBestMove} />
 
           {/* Cloud Eval */}
           <OpeningExplorer fen={currentFen} />

@@ -2,14 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import { Chessground } from 'chessground';
 import type { Api } from 'chessground/api';
 import type { Key } from 'chessground/types';
+import type { DrawShape } from 'chessground/draw';
 
 type Props = {
   fen: string;
   orientation?: 'white' | 'black';
   lastMove?: Key[];
+  autoShapes?: DrawShape[];
 };
 
-export function Board({ fen, orientation = 'white', lastMove }: Props) {
+export function Board({ fen, orientation = 'white', lastMove, autoShapes }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
   const cgRef = useRef<Api | null>(null);
@@ -41,6 +43,10 @@ export function Board({ fen, orientation = 'white', lastMove }: Props) {
         coordinates: true,
         animation: { enabled: true, duration: 200 },
         lastMove,
+        drawable: {
+          enabled: true,
+          autoShapes: autoShapes ?? [],
+        },
       });
     }
 
@@ -59,6 +65,11 @@ export function Board({ fen, orientation = 'white', lastMove }: Props) {
       animation: { enabled: true, duration: 200 },
     });
   }, [fen, orientation, lastMove]);
+
+  // Update arrow shapes
+  useEffect(() => {
+    cgRef.current?.setAutoShapes(autoShapes ?? []);
+  }, [autoShapes]);
 
   // Redraw on resize
   useEffect(() => {
