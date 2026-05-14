@@ -10,8 +10,13 @@ type GameRow = {
   black_elo: number | null;
   white_team: string | null;
   black_team: string | null;
+  white_fide_id: string | null;
+  black_fide_id: string | null;
+  white_cz_id: string | null;
+  black_cz_id: string | null;
   result: string | null;
   eco: string | null;
+  ply_count: number | null;
   moves_pgn: string;
 };
 
@@ -36,7 +41,12 @@ export function buildPgn(game: GameRow, mode: 'full' | 'stripped'): string {
   // Optional tags
   if (game.white_elo) addTag('WhiteElo', game.white_elo);
   if (game.black_elo) addTag('BlackElo', game.black_elo);
+  if (game.white_fide_id) addTag('WhiteFideId', game.white_fide_id);
+  if (game.black_fide_id) addTag('BlackFideId', game.black_fide_id);
+  if (game.white_cz_id) addTag('WhiteCzId', game.white_cz_id);
+  if (game.black_cz_id) addTag('BlackCzId', game.black_cz_id);
   if (game.eco) addTag('ECO', game.eco);
+  if (game.ply_count != null) addTag('PlyCount', game.ply_count);
   if (game.board) addTag('Board', game.board);
   if (game.white_team) addTag('WhiteTeam', game.white_team);
   if (game.black_team) addTag('BlackTeam', game.black_team);
@@ -46,6 +56,18 @@ export function buildPgn(game: GameRow, mode: 'full' | 'stripped'): string {
     : game.moves_pgn;
 
   return tags.join('\n') + '\n\n' + moveText + '\n';
+}
+
+/**
+ * Count plies (half-moves) in a PGN movetext.
+ * Strips comments, variations, and NAGs first, then counts SAN-shaped tokens.
+ */
+export function countPlies(movesPgn: string): number {
+  const stripped = stripMoveText(movesPgn);
+  if (!stripped) return 0;
+  const moveRegex = /(?:O-O-O|O-O|[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](?:=[QRBN])?)[+#]?/g;
+  const matches = stripped.match(moveRegex);
+  return matches ? matches.length : 0;
 }
 
 /**

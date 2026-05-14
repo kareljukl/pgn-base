@@ -56,6 +56,18 @@ export function HeaderForm({ headers, onChange, showRequired }: Props) {
 
         <Label text="BlackTeam" />
         <Input value={headers.BlackTeam} onChange={(v) => set('BlackTeam', v)} />
+
+        <Label text="WhiteFideId" />
+        <Input value={headers.WhiteFideId} onChange={(v) => set('WhiteFideId', v)} />
+
+        <Label text="BlackFideId" />
+        <Input value={headers.BlackFideId} onChange={(v) => set('BlackFideId', v)} />
+
+        <Label text="WhiteCzId" />
+        <Input value={headers.WhiteCzId} onChange={(v) => set('WhiteCzId', v)} />
+
+        <Label text="BlackCzId" />
+        <Input value={headers.BlackCzId} onChange={(v) => set('BlackCzId', v)} />
       </div>
     </div>
   );

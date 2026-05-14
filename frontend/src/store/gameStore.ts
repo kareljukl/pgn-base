@@ -9,6 +9,10 @@ type GameInfo = {
   result?: string;
   event?: string;
   date?: string;
+  whiteFideId?: string;
+  blackFideId?: string;
+  whiteCzId?: string;
+  blackCzId?: string;
 };
 
 type GameState = {

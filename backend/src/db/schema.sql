@@ -18,24 +18,29 @@ CREATE TABLE IF NOT EXISTS databases (
 );
 
 CREATE TABLE IF NOT EXISTS games (
-  id          TEXT PRIMARY KEY,
-  database_id TEXT NOT NULL REFERENCES databases(id) ON DELETE CASCADE,
-  event       TEXT,
-  site        TEXT,
-  date        TEXT,
-  round       TEXT,
-  board       TEXT,
-  white       TEXT,
-  black       TEXT,
-  white_elo   INTEGER,
-  black_elo   INTEGER,
-  white_team  TEXT,
-  black_team  TEXT,
-  result      TEXT,
-  eco         TEXT,
-  moves_pgn   TEXT NOT NULL DEFAULT '',
-  created_at  INTEGER NOT NULL,
-  updated_at  INTEGER NOT NULL
+  id             TEXT PRIMARY KEY,
+  database_id    TEXT NOT NULL REFERENCES databases(id) ON DELETE CASCADE,
+  event          TEXT,
+  site           TEXT,
+  date           TEXT,
+  round          TEXT,
+  board          TEXT,
+  white          TEXT,
+  black          TEXT,
+  white_elo      INTEGER,
+  black_elo      INTEGER,
+  white_team     TEXT,
+  black_team     TEXT,
+  white_fide_id  TEXT,
+  black_fide_id  TEXT,
+  white_cz_id    TEXT,
+  black_cz_id    TEXT,
+  result         TEXT,
+  eco            TEXT,
+  ply_count      INTEGER,
+  moves_pgn      TEXT NOT NULL DEFAULT '',
+  created_at     INTEGER NOT NULL,
+  updated_at     INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_games_database_id ON games(database_id);

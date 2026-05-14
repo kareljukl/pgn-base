@@ -9,6 +9,10 @@ export type EditorHeaders = {
   BlackElo: string;
   WhiteTeam: string;
   BlackTeam: string;
+  WhiteFideId: string;
+  BlackFideId: string;
+  WhiteCzId: string;
+  BlackCzId: string;
   ECO: string;
 };
 
@@ -24,6 +28,10 @@ export function emptyHeaders(): EditorHeaders {
     BlackElo: '',
     WhiteTeam: '',
     BlackTeam: '',
+    WhiteFideId: '',
+    BlackFideId: '',
+    WhiteCzId: '',
+    BlackCzId: '',
     ECO: '',
   };
 }
@@ -59,7 +67,8 @@ export function toApiHeaders(h: EditorHeaders): Record<string, string> {
   const out: Record<string, string> = {};
   const keys: (keyof EditorHeaders)[] = [
     'Event', 'White', 'Black', 'Date', 'Round', 'Result',
-    'WhiteElo', 'BlackElo', 'WhiteTeam', 'BlackTeam', 'ECO',
+    'WhiteElo', 'BlackElo', 'WhiteTeam', 'BlackTeam',
+    'WhiteFideId', 'BlackFideId', 'WhiteCzId', 'BlackCzId', 'ECO',
   ];
   for (const k of keys) {
     const v = h[k]?.trim();

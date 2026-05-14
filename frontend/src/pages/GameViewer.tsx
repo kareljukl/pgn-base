@@ -18,6 +18,10 @@ type GameData = {
   result: string | null;
   event: string | null;
   date: string | null;
+  white_fide_id: string | null;
+  black_fide_id: string | null;
+  white_cz_id: string | null;
+  black_cz_id: string | null;
   moves_pgn: string;
 };
 
@@ -70,6 +74,10 @@ export function GameViewer() {
         result: g.result ?? undefined,
         event: g.event ?? undefined,
         date: g.date ?? undefined,
+        whiteFideId: g.white_fide_id ?? undefined,
+        blackFideId: g.black_fide_id ?? undefined,
+        whiteCzId: g.white_cz_id ?? undefined,
+        blackCzId: g.black_cz_id ?? undefined,
       });
     }
   }, [data, loadGame]);
@@ -117,14 +125,17 @@ export function GameViewer() {
       {/* Game header */}
       <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: '0.5rem' }}>
         <div>
-          <span style={{ fontWeight: 600 }}>
-            {info.white || '?'}{info.whiteElo ? ` (${info.whiteElo})` : ''}
-          </span>
-          <span style={{ margin: '0 0.5rem', color: '#888' }}>vs</span>
-          <span style={{ fontWeight: 600 }}>
-            {info.black || '?'}{info.blackElo ? ` (${info.blackElo})` : ''}
-          </span>
-          <span style={{ marginLeft: '1rem', color: '#666' }}>{info.result}</span>
+          <div>
+            <span style={{ fontWeight: 600 }}>
+              {info.white || '?'}{info.whiteElo ? ` (${info.whiteElo})` : ''}
+            </span>
+            <span style={{ margin: '0 0.5rem', color: '#888' }}>vs</span>
+            <span style={{ fontWeight: 600 }}>
+              {info.black || '?'}{info.blackElo ? ` (${info.blackElo})` : ''}
+            </span>
+            <span style={{ marginLeft: '1rem', color: '#666' }}>{info.result}</span>
+          </div>
+          <PlayerIds info={info} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <span style={{ color: '#888', fontSize: '0.85rem' }}>
@@ -340,6 +351,31 @@ function resultColor(result: string | null): string {
   if (result === '1-0') return '#16a34a';
   if (result === '0-1') return '#dc2626';
   return '#888';
+}
+
+function PlayerIds({ info }: { info: {
+  whiteFideId?: string;
+  blackFideId?: string;
+  whiteCzId?: string;
+  blackCzId?: string;
+} }) {
+  const whiteIds = formatIds(info.whiteFideId, info.whiteCzId);
+  const blackIds = formatIds(info.blackFideId, info.blackCzId);
+  if (!whiteIds && !blackIds) return null;
+  return (
+    <div style={{ fontSize: '0.75rem', color: '#888', marginTop: '0.15rem' }}>
+      {whiteIds && <span>Bílý: {whiteIds}</span>}
+      {whiteIds && blackIds && <span style={{ margin: '0 0.4rem' }}>·</span>}
+      {blackIds && <span>Černý: {blackIds}</span>}
+    </div>
+  );
+}
+
+function formatIds(fideId?: string, czId?: string): string {
+  const parts: string[] = [];
+  if (fideId) parts.push(`FIDE ${fideId}`);
+  if (czId) parts.push(`ČŠS ${czId}`);
+  return parts.join(', ');
 }
 
 function NavButton({ onClick, label, title }: { onClick: () => void; label: string; title: string }) {
