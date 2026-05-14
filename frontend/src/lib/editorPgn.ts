@@ -63,6 +63,53 @@ export function buildEditorMovesPgn(moves: string[], result: string): string {
   return out;
 }
 
+export type GameRowLike = {
+  event: string | null;
+  date: string | null;
+  round: string | null;
+  white: string | null;
+  black: string | null;
+  white_elo: number | null;
+  black_elo: number | null;
+  white_team: string | null;
+  black_team: string | null;
+  white_fide_id: string | null;
+  black_fide_id: string | null;
+  white_cz_id: string | null;
+  black_cz_id: string | null;
+  result: string | null;
+  eco: string | null;
+};
+
+export function headersFromGameRow(g: GameRowLike): EditorHeaders {
+  return {
+    Event: g.event ?? '',
+    White: g.white ?? '',
+    Black: g.black ?? '',
+    Date: g.date ?? '',
+    Round: g.round ?? '',
+    Result: g.result ?? '*',
+    WhiteElo: g.white_elo != null ? String(g.white_elo) : '',
+    BlackElo: g.black_elo != null ? String(g.black_elo) : '',
+    WhiteTeam: g.white_team ?? '',
+    BlackTeam: g.black_team ?? '',
+    WhiteFideId: g.white_fide_id ?? '',
+    BlackFideId: g.black_fide_id ?? '',
+    WhiteCzId: g.white_cz_id ?? '',
+    BlackCzId: g.black_cz_id ?? '',
+    ECO: g.eco ?? '',
+  };
+}
+
+export function headersEqual(a: EditorHeaders, b: EditorHeaders): boolean {
+  const keys: (keyof EditorHeaders)[] = [
+    'Event', 'White', 'Black', 'Date', 'Round', 'Result',
+    'WhiteElo', 'BlackElo', 'WhiteTeam', 'BlackTeam',
+    'WhiteFideId', 'BlackFideId', 'WhiteCzId', 'BlackCzId', 'ECO',
+  ];
+  return keys.every((k) => a[k] === b[k]);
+}
+
 export function toApiHeaders(h: EditorHeaders): Record<string, string> {
   const out: Record<string, string> = {};
   const keys: (keyof EditorHeaders)[] = [

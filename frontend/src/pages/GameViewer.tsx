@@ -1,10 +1,18 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { DrawShape } from 'chessground/draw';
 import { api, API_ORIGIN } from '../lib/api';
 import { useGameStore } from '../store/gameStore';
 import { Board } from '../components/Board/Board';
+import { HeaderForm } from '../components/GameEditor/HeaderForm';
+import {
+  emptyHeaders,
+  headersFromGameRow,
+  headersEqual,
+  toApiHeaders,
+  type EditorHeaders,
+} from '../lib/editorPgn';
 import { MoveList } from '../components/MoveList/MoveList';
 import { Analysis } from '../components/Analysis/Analysis';
 import { OpeningExplorer } from '../components/OpeningExplorer/OpeningExplorer';
@@ -19,10 +27,14 @@ type GameData = {
   result: string | null;
   event: string | null;
   date: string | null;
+  round: string | null;
+  white_team: string | null;
+  black_team: string | null;
   white_fide_id: string | null;
   black_fide_id: string | null;
   white_cz_id: string | null;
   black_cz_id: string | null;
+  eco: string | null;
   moves_pgn: string;
 };
 
@@ -54,8 +66,14 @@ export function GameViewer() {
   const { id, gameId } = useParams<{ id: string; gameId: string }>();
   const location = useLocation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { loadGame, goForward, goBack, goToStart, goToEnd, currentFen, info } = useGameStore();
   const [bestMoveArrow, setBestMoveArrow] = useState<DrawShape | null>(null);
+  const [showHeaders, setShowHeaders] = useState(false);
+  const [headers, setHeaders] = useState<EditorHeaders>(emptyHeaders);
+  const [initialHeaders, setInitialHeaders] = useState<EditorHeaders>(emptyHeaders);
+  const [showRequired, setShowRequired] = useState(false);
+  const [headerError, setHeaderError] = useState<string | null>(null);
 
   const handleBestMove = useCallback((uci: string | null) => {
     setBestMoveArrow(uci ? { orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: 'green' } as DrawShape : null);
@@ -85,6 +103,11 @@ export function GameViewer() {
         whiteCzId: g.white_cz_id ?? undefined,
         blackCzId: g.black_cz_id ?? undefined,
       });
+      const h = headersFromGameRow(g);
+      setHeaders(h);
+      setInitialHeaders(h);
+      setShowRequired(false);
+      setHeaderError(null);
     }
   }, [data, loadGame]);
 
@@ -123,6 +146,50 @@ export function GameViewer() {
     });
   };
 
+  const dirty = !headersEqual(headers, initialHeaders);
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      api.patch<{ ok: true }>(`/databases/${id}/games/${gameId}`, {
+        headers: toApiHeaders(headers),
+      }),
+    onSuccess: () => {
+      setShowRequired(false);
+      setHeaderError(null);
+      queryClient.invalidateQueries({ queryKey: ['game', id, gameId] });
+      queryClient.invalidateQueries({ queryKey: ['games', id] });
+      queryClient.invalidateQueries({ queryKey: ['sidebar-games', id] });
+    },
+    onError: (err: Error) => {
+      setHeaderError(err.message ?? 'Chyba při ukládání');
+    },
+  });
+
+  const handleSaveHeaders = () => {
+    if (!headers.Event.trim() || !headers.White.trim() || !headers.Black.trim()) {
+      setShowRequired(true);
+      setHeaderError('Vyplňte povinná pole (Event, White, Black).');
+      return;
+    }
+    setHeaderError(null);
+    saveMutation.mutate();
+  };
+
+  const handleDiscardHeaders = () => {
+    setHeaders(initialHeaders);
+    setShowRequired(false);
+    setHeaderError(null);
+  };
+
+  const handleToggleHeaders = () => {
+    if (showHeaders && dirty) return; // can't close while dirty
+    setShowHeaders((v) => !v);
+    if (showHeaders) {
+      setShowRequired(false);
+      setHeaderError(null);
+    }
+  };
+
   if (isLoading) return <p>Načítání...</p>;
   if (!data?.game) return <p>Partie nenalezena.</p>;
 
@@ -147,6 +214,22 @@ export function GameViewer() {
           <span style={{ color: '#888', fontSize: '0.85rem' }}>
             {info.event}{info.date ? ` · ${info.date}` : ''}
           </span>
+          <button
+            onClick={handleToggleHeaders}
+            disabled={showHeaders && dirty}
+            title={showHeaders && dirty ? 'Nejprve uložte nebo zahoďte změny' : undefined}
+            style={{
+              fontSize: '0.8rem',
+              padding: '0.2rem 0.5rem',
+              border: '1px solid #ddd',
+              borderRadius: 4,
+              background: showHeaders ? '#eef2ff' : '#fff',
+              color: showHeaders && dirty ? '#999' : '#333',
+              cursor: showHeaders && dirty ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {showHeaders && !dirty ? 'Zavřít hlavičku' : 'Hlavička'}
+          </button>
           <a
             href={`${API_ORIGIN}/api/v1/databases/${id}/games/${gameId}/export?mode=full`}
             download
@@ -181,9 +264,39 @@ export function GameViewer() {
           <OpeningBook fen={currentFen} />
         </div>
 
-        {/* Right column: Move list */}
-        <div style={{ flex: 1, minWidth: 250 }}>
+        {/* Right column: Move list + optional header editor */}
+        <div style={{ flex: 1, minWidth: 250, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           <MoveList />
+          {showHeaders && (
+            <div>
+              <HeaderForm
+                headers={headers}
+                onChange={setHeaders}
+                showRequired={showRequired}
+              />
+              {headerError && (
+                <p style={{ color: '#dc2626', fontSize: '0.8rem', margin: '0.4rem 0 0' }}>{headerError}</p>
+              )}
+              {dirty && (
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={handleDiscardHeaders}
+                    disabled={saveMutation.isPending}
+                    style={discardBtnStyle}
+                  >
+                    Zahodit změny
+                  </button>
+                  <button
+                    onClick={handleSaveHeaders}
+                    disabled={saveMutation.isPending}
+                    style={saveBtnStyle}
+                  >
+                    {saveMutation.isPending ? 'Ukládám...' : 'Uložit'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -383,6 +496,26 @@ function formatIds(fideId?: string, czId?: string): string {
   if (czId) parts.push(`ČŠS ${czId}`);
   return parts.join(', ');
 }
+
+const saveBtnStyle: React.CSSProperties = {
+  padding: '0.4rem 0.9rem',
+  fontSize: '0.85rem',
+  cursor: 'pointer',
+  border: '1px solid #333',
+  borderRadius: 4,
+  background: '#333',
+  color: '#fff',
+};
+
+const discardBtnStyle: React.CSSProperties = {
+  padding: '0.4rem 0.9rem',
+  fontSize: '0.85rem',
+  cursor: 'pointer',
+  border: '1px solid #ddd',
+  borderRadius: 4,
+  background: '#fff',
+  color: '#333',
+};
 
 function NavButton({ onClick, label, title }: { onClick: () => void; label: string; title: string }) {
   return (

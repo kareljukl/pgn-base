@@ -177,6 +177,77 @@ games.get('/:dbId/games/:gameId', authRequired, async (c) => {
   return c.json({ game });
 });
 
+// Update game headers
+games.patch('/:dbId/games/:gameId', authRequired, async (c) => {
+  const user = c.get('user');
+  const dbId = c.req.param('dbId');
+  const gameId = c.req.param('gameId');
+
+  const db = await c.env.DB.prepare(
+    'SELECT * FROM databases WHERE id = ? AND owner_id = ?'
+  ).bind(dbId, user.id).first();
+
+  if (!db) {
+    return c.json({ error: 'Databáze nenalezena' }, 404);
+  }
+
+  const game = await c.env.DB.prepare(
+    'SELECT id FROM games WHERE id = ? AND database_id = ?'
+  ).bind(gameId, dbId).first();
+
+  if (!game) {
+    return c.json({ error: 'Partie nenalezena' }, 404);
+  }
+
+  const body = await c.req.json<{ headers: Record<string, string> }>();
+  if (!body || typeof body.headers !== 'object') {
+    return c.json({ error: 'Očekáván objekt s polem "headers"' }, 400);
+  }
+
+  const h = body.headers;
+  const now = Math.floor(Date.now() / 1000);
+
+  await c.env.DB.prepare(
+    `UPDATE games SET
+       event = ?, site = ?, date = ?, round = ?, board = ?,
+       white = ?, black = ?,
+       white_elo = ?, black_elo = ?,
+       white_team = ?, black_team = ?,
+       white_fide_id = ?, black_fide_id = ?,
+       white_cz_id = ?, black_cz_id = ?,
+       result = ?, eco = ?,
+       updated_at = ?
+     WHERE id = ? AND database_id = ?`
+  ).bind(
+    h.Event || null,
+    h.Site || null,
+    h.Date || null,
+    h.Round || null,
+    h.Board || null,
+    h.White || null,
+    h.Black || null,
+    h.WhiteElo ? parseInt(h.WhiteElo) || null : null,
+    h.BlackElo ? parseInt(h.BlackElo) || null : null,
+    h.WhiteTeam || null,
+    h.BlackTeam || null,
+    h.WhiteFideId || null,
+    h.BlackFideId || null,
+    h.WhiteCzId || null,
+    h.BlackCzId || null,
+    h.Result || null,
+    h.ECO || null,
+    now,
+    gameId,
+    dbId
+  ).run();
+
+  await c.env.DB.prepare(
+    'UPDATE databases SET updated_at = ? WHERE id = ?'
+  ).bind(now, dbId).run();
+
+  return c.json({ ok: true });
+});
+
 // Delete game
 games.delete('/:dbId/games/:gameId', authRequired, async (c) => {
   const user = c.get('user');
