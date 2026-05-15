@@ -199,26 +199,39 @@ games.patch('/:dbId/games/:gameId', authRequired, async (c) => {
     return c.json({ error: 'Partie nenalezena' }, 404);
   }
 
-  const body = await c.req.json<{ headers: Record<string, string> }>();
+  const body = await c.req.json<{ headers: Record<string, string>; movesPgn?: string }>();
   if (!body || typeof body.headers !== 'object') {
     return c.json({ error: 'Očekáván objekt s polem "headers"' }, 400);
   }
 
   const h = body.headers;
   const now = Math.floor(Date.now() / 1000);
+  const updateMoves = typeof body.movesPgn === 'string';
 
-  await c.env.DB.prepare(
-    `UPDATE games SET
-       event = ?, site = ?, date = ?, round = ?, board = ?,
-       white = ?, black = ?,
-       white_elo = ?, black_elo = ?,
-       white_team = ?, black_team = ?,
-       white_fide_id = ?, black_fide_id = ?,
-       white_cz_id = ?, black_cz_id = ?,
-       result = ?, eco = ?,
-       updated_at = ?
-     WHERE id = ? AND database_id = ?`
-  ).bind(
+  const sql = updateMoves
+    ? `UPDATE games SET
+         event = ?, site = ?, date = ?, round = ?, board = ?,
+         white = ?, black = ?,
+         white_elo = ?, black_elo = ?,
+         white_team = ?, black_team = ?,
+         white_fide_id = ?, black_fide_id = ?,
+         white_cz_id = ?, black_cz_id = ?,
+         result = ?, eco = ?,
+         moves_pgn = ?, ply_count = ?,
+         updated_at = ?
+       WHERE id = ? AND database_id = ?`
+    : `UPDATE games SET
+         event = ?, site = ?, date = ?, round = ?, board = ?,
+         white = ?, black = ?,
+         white_elo = ?, black_elo = ?,
+         white_team = ?, black_team = ?,
+         white_fide_id = ?, black_fide_id = ?,
+         white_cz_id = ?, black_cz_id = ?,
+         result = ?, eco = ?,
+         updated_at = ?
+       WHERE id = ? AND database_id = ?`;
+
+  const headerBinds = [
     h.Event || null,
     h.Site || null,
     h.Date || null,
@@ -236,10 +249,13 @@ games.patch('/:dbId/games/:gameId', authRequired, async (c) => {
     h.BlackCzId || null,
     h.Result || null,
     h.ECO || null,
-    now,
-    gameId,
-    dbId
-  ).run();
+  ];
+
+  const tailBinds = updateMoves
+    ? [body.movesPgn ?? '', countPlies(body.movesPgn ?? ''), now, gameId, dbId]
+    : [now, gameId, dbId];
+
+  await c.env.DB.prepare(sql).bind(...headerBinds, ...tailBinds).run();
 
   await c.env.DB.prepare(
     'UPDATE databases SET updated_at = ? WHERE id = ?'

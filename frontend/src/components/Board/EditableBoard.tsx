@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Chessground } from 'chessground';
 import type { Api } from 'chessground/api';
 import type { Key, Dests } from 'chessground/types';
+import type { DrawShape } from 'chessground/draw';
 import { Chess } from 'chess.js';
 
 type Props = {
@@ -9,6 +10,7 @@ type Props = {
   editable: boolean;
   lastMove?: [string, string];
   onMove: (san: string, fen: string) => void;
+  autoShapes?: DrawShape[];
 };
 
 type PromoState = {
@@ -24,7 +26,7 @@ const PROMO_PIECES: Array<{ key: 'q' | 'r' | 'b' | 'n'; label: string }> = [
   { key: 'n', label: '♞' },
 ];
 
-export function EditableBoard({ fen, editable, lastMove, onMove }: Props) {
+export function EditableBoard({ fen, editable, lastMove, onMove, autoShapes }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
   const cgRef = useRef<Api | null>(null);
@@ -116,7 +118,7 @@ export function EditableBoard({ fen, editable, lastMove, onMove }: Props) {
       draggable: { showGhost: true, enabled: true },
       selectable: { enabled: true },
       premovable: { enabled: false },
-      drawable: { enabled: false },
+      drawable: { enabled: true, autoShapes: autoShapes ?? [] },
       viewOnly: !editable,
     });
     setReady(true);
@@ -150,6 +152,12 @@ export function EditableBoard({ fen, editable, lastMove, onMove }: Props) {
   useEffect(() => {
     if (size > 0) cgRef.current?.redrawAll();
   }, [size]);
+
+  // Update engine arrow shapes
+  useEffect(() => {
+    if (!ready) return;
+    cgRef.current?.setAutoShapes(autoShapes ?? []);
+  }, [ready, autoShapes]);
 
   const onPromoPick = (piece: 'q' | 'r' | 'b' | 'n') => {
     if (!promo) return;

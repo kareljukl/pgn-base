@@ -67,7 +67,7 @@ export function GameViewer() {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { loadGame, goForward, goBack, goToStart, goToEnd, currentFen, info } = useGameStore();
+  const { loadGame, goForward, goBack, goToStart, goToEnd, currentFen, info, getCurrentMoveIndex } = useGameStore();
   const [bestMoveArrow, setBestMoveArrow] = useState<DrawShape | null>(null);
   const [showHeaders, setShowHeaders] = useState(false);
   const [headers, setHeaders] = useState<EditorHeaders>(emptyHeaders);
@@ -181,6 +181,13 @@ export function GameViewer() {
     setHeaderError(null);
   };
 
+  const handleEditGame = () => {
+    const moveIdx = getCurrentMoveIndex();
+    navigate(`/db/${id}/game/${gameId}/edit`, {
+      state: { currentMoveIndex: moveIdx + 1 },
+    });
+  };
+
   const handleToggleHeaders = () => {
     if (showHeaders && dirty) return; // can't close while dirty
     setShowHeaders((v) => !v);
@@ -216,19 +223,35 @@ export function GameViewer() {
           </span>
           <button
             onClick={handleToggleHeaders}
-            disabled={showHeaders && dirty}
-            title={showHeaders && dirty ? 'Nejprve uložte nebo zahoďte změny' : undefined}
+            disabled={dirty}
+            title={dirty ? 'Nejprve uložte nebo zahoďte změny' : undefined}
             style={{
               fontSize: '0.8rem',
               padding: '0.2rem 0.5rem',
               border: '1px solid #ddd',
               borderRadius: 4,
               background: showHeaders ? '#eef2ff' : '#fff',
-              color: showHeaders && dirty ? '#999' : '#333',
-              cursor: showHeaders && dirty ? 'not-allowed' : 'pointer',
+              color: dirty ? '#999' : '#333',
+              cursor: dirty ? 'not-allowed' : 'pointer',
             }}
           >
             {showHeaders && !dirty ? 'Zavřít hlavičku' : 'Hlavička'}
+          </button>
+          <button
+            onClick={handleEditGame}
+            disabled={dirty}
+            title={dirty ? 'Nejprve uložte nebo zahoďte změny v hlavičce' : undefined}
+            style={{
+              fontSize: '0.8rem',
+              padding: '0.2rem 0.5rem',
+              border: '1px solid #ddd',
+              borderRadius: 4,
+              background: '#fff',
+              color: dirty ? '#999' : '#333',
+              cursor: dirty ? 'not-allowed' : 'pointer',
+            }}
+          >
+            Upravit partii
           </button>
           <a
             href={`${API_ORIGIN}/api/v1/databases/${id}/games/${gameId}/export?mode=full`}

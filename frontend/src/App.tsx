@@ -21,6 +21,7 @@ export function App() {
           <Route path="/" element={<Databases />} />
           <Route path="/db/:id" element={<DatabaseDetail />} />
           <Route path="/db/:id/game/new" element={<GameEditor />} />
+          <Route path="/db/:id/game/:gameId/edit" element={<GameEditor />} />
           <Route path="/db/:id/game/:gameId" element={<GameViewer />} />
         </Route>
         {/* Public routes — no auth required */}

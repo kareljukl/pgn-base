@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Chess } from 'chess.js';
+import type { DrawShape } from 'chessground/draw';
 import { api } from '../lib/api';
 import { EditableBoard } from '../components/Board/EditableBoard';
 import { EditorMoveList } from '../components/GameEditor/EditorMoveList';
@@ -9,12 +10,17 @@ import { HeaderForm } from '../components/GameEditor/HeaderForm';
 import { ReplaceMoveInline, ReplaceConfirmModal } from '../components/GameEditor/ReplaceMoveDialog';
 import { RestoreDraftDialog } from '../components/GameEditor/RestoreDraftDialog';
 import { OpeningBook } from '../components/OpeningBook/OpeningBook';
+import { Analysis } from '../components/Analysis/Analysis';
 import { useEditorEco } from '../hooks/useEditorEco';
+import { parseMoveText } from '../lib/moveTree';
 import {
   buildEditorMovesPgn,
   emptyHeaders,
+  headersEqual,
+  headersFromGameRow,
   toApiHeaders,
   type EditorHeaders,
+  type GameRowLike,
 } from '../lib/editorPgn';
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -22,6 +28,8 @@ const AUTOSAVE_INTERVAL_MS = 60_000;
 
 type DatabaseInfo = { id: string; name: string };
 type DatabasesResponse = { databases: DatabaseInfo[] };
+
+type GameData = GameRowLike & { id: string; moves_pgn: string };
 
 type Draft = {
   savedAt: number;
@@ -48,29 +56,75 @@ type ReplaceConfirm = {
 };
 
 export function GameEditor() {
-  const { id } = useParams<{ id: string }>();
+  const { id, gameId } = useParams<{ id: string; gameId?: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const isEdit = !!gameId;
 
-  const draftKey = `pgn-base-draft-${id}`;
+  const draftKey = isEdit ? `pgn-base-draft-edit-${gameId}` : `pgn-base-draft-${id}`;
 
   const [moves, setMoves] = useState<string[]>([]);
   const [fens, setFens] = useState<string[]>([]);
   const [cursor, setCursor] = useState(-1);
   const [headers, setHeaders] = useState<EditorHeaders>(emptyHeaders);
+  const [initialMoves, setInitialMoves] = useState<string[]>([]);
+  const [initialHeaders, setInitialHeaders] = useState<EditorHeaders>(emptyHeaders);
   const [pending, setPending] = useState<PendingMove | null>(null);
   const [replaceConfirm, setReplaceConfirm] = useState<ReplaceConfirm | null>(null);
   const [showRequired, setShowRequired] = useState(false);
   const [draftPrompt, setDraftPrompt] = useState<Draft | null>(null);
   const [autoResultNote, setAutoResultNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [bestMoveArrow, setBestMoveArrow] = useState<DrawShape | null>(null);
   const draftLoaded = useRef(false);
+  const initFromGameDone = useRef(false);
+
+  const handleBestMove = useCallback((uci: string | null) => {
+    setBestMoveArrow(uci
+      ? ({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: 'green' } as DrawShape)
+      : null);
+  }, []);
 
   const { data: dbList } = useQuery({
     queryKey: ['databases'],
     queryFn: () => api.get<DatabasesResponse>('/databases'),
   });
   const dbName = dbList?.databases.find((d) => d.id === id)?.name ?? '';
+
+  // Edit mode: fetch existing game
+  const { data: gameData, isLoading: gameLoading } = useQuery({
+    queryKey: ['game', id, gameId],
+    queryFn: () => api.get<{ game: GameData }>(`/databases/${id}/games/${gameId}`),
+    enabled: isEdit,
+  });
+
+  // Init state from fetched game (only once per gameId, and skipped if draft restore wins)
+  useEffect(() => {
+    if (!isEdit || !gameData?.game || initFromGameDone.current) return;
+    if (draftPrompt) return; // wait for user choice before initializing
+    initFromGameDone.current = true;
+
+    const g = gameData.game;
+    const tree = parseMoveText(g.moves_pgn || '');
+    const parsedMoves = tree.moves.map((n) => n.san);
+    const parsedFens = tree.moves.map((n) => n.fen);
+    const loadedHeaders = headersFromGameRow(g);
+    setMoves(parsedMoves);
+    setFens(parsedFens);
+    setHeaders(loadedHeaders);
+    setInitialMoves(parsedMoves);
+    setInitialHeaders(loadedHeaders);
+
+    const stateIdx = (location.state as { currentMoveIndex?: number } | null)?.currentMoveIndex;
+    let initCursor: number;
+    if (typeof stateIdx === 'number' && stateIdx >= 0 && stateIdx <= parsedMoves.length) {
+      initCursor = stateIdx - 1; // spec: 0 = start, N = after N moves → cursor = N-1
+    } else {
+      initCursor = parsedMoves.length - 1; // fallback to end
+    }
+    setCursor(initCursor);
+  }, [isEdit, gameData, draftPrompt, location.state]);
 
   // Check for draft on mount
   useEffect(() => {
@@ -94,10 +148,14 @@ export function GameEditor() {
   const atEnd = cursor === moves.length - 1;
   const navLocked = pending !== null || replaceConfirm !== null;
 
+  const movesDirty = !movesArraysEqual(moves, initialMoves);
+  const headersDirty = !headersEqual(headers, initialHeaders);
+  const dirty = movesDirty || headersDirty;
+
   // Autosave every minute
   useEffect(() => {
     const interval = setInterval(() => {
-      if (moves.length === 0 && !hasHeaderContent(headers)) return;
+      if (!dirty) return;
       const draft: Draft = {
         savedAt: Date.now(),
         moves,
@@ -108,7 +166,7 @@ export function GameEditor() {
       localStorage.setItem(draftKey, JSON.stringify(draft));
     }, AUTOSAVE_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [moves, fens, cursor, headers, draftKey]);
+  }, [moves, fens, cursor, headers, draftKey, dirty]);
 
   // Keyboard nav
   useEffect(() => {
@@ -251,6 +309,7 @@ export function GameEditor() {
     setCursor(draftPrompt.cursor);
     setHeaders(draftPrompt.headers);
     setDraftPrompt(null);
+    initFromGameDone.current = true; // don't overwrite restored draft with fresh game data in edit mode
   };
 
   const discardDraft = () => {
@@ -258,22 +317,36 @@ export function GameEditor() {
     setDraftPrompt(null);
   };
 
-  const saveMutation = useMutation({
-    mutationFn: () => {
+  type SaveResult = { imported?: number; ids?: string[]; ok?: true };
+  const saveMutation = useMutation<SaveResult>({
+    mutationFn: async () => {
+      const movesPgn = buildEditorMovesPgn(moves, headers.Result);
+      if (isEdit) {
+        return await api.patch<SaveResult>(`/databases/${id}/games/${gameId}`, {
+          headers: toApiHeaders(headers),
+          movesPgn,
+        });
+      }
       const payload = {
         games: [
           {
             headers: toApiHeaders(headers),
-            movesPgn: buildEditorMovesPgn(moves, headers.Result),
+            movesPgn,
           },
         ],
       };
-      return api.post<{ imported: number; ids: string[] }>(`/databases/${id}/games`, payload);
+      return await api.post<SaveResult>(`/databases/${id}/games`, payload);
     },
     onSuccess: (data) => {
       localStorage.removeItem(draftKey);
       queryClient.invalidateQueries({ queryKey: ['games', id] });
-      const newId = data.ids?.[0];
+      if (isEdit) {
+        queryClient.invalidateQueries({ queryKey: ['game', id, gameId] });
+        queryClient.invalidateQueries({ queryKey: ['sidebar-games', id] });
+        navigate(`/db/${id}/game/${gameId}`);
+        return;
+      }
+      const newId = data?.ids?.[0];
       if (newId) {
         navigate(`/db/${id}/game/${newId}`);
       } else {
@@ -298,12 +371,12 @@ export function GameEditor() {
   };
 
   const handleDiscard = () => {
-    const dirty = moves.length > 0 || hasHeaderContent(headers);
-    if (dirty && !confirm('Zahodit neuloženou partii? Všechny zadané tahy a hlavičky budou ztraceny.')) {
-      return;
+    if (dirty) {
+      const message = buildDiscardMessage(movesDirty, headersDirty, isEdit);
+      if (!confirm(message)) return;
     }
     localStorage.removeItem(draftKey);
-    navigate(`/db/${id}`);
+    navigate(isEdit ? `/db/${id}/game/${gameId}` : `/db/${id}`);
   };
 
   const lastMovePair = useMemo<[string, string] | undefined>(() => {
@@ -328,6 +401,10 @@ export function GameEditor() {
     }
   }, [eco]);
 
+  if (isEdit && gameLoading && !initFromGameDone.current && !draftPrompt) {
+    return <p>Načítání...</p>;
+  }
+
   if (draftPrompt) {
     return (
       <RestoreDraftDialog
@@ -343,14 +420,47 @@ export function GameEditor() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-        <h1 style={{ margin: 0, fontSize: '1.25rem' }}>
-          <span style={{ color: '#666', fontWeight: 400 }}>← </span>
-          {dbName || 'Databáze'} <span style={{ color: '#888', fontWeight: 400 }}>· Nová partie</span>
-        </h1>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+      {/* Breadcrumb */}
+      <div style={{ marginBottom: '0.75rem', fontSize: '0.85rem', color: '#666' }}>
+        <Link to={`/db/${id}`} style={{ color: '#2563eb', textDecoration: 'none' }}>
+          ← {dbName || 'Zpět na databázi'}
+        </Link>
+        {!isEdit && <span style={{ color: '#888' }}>{' '}· Nová partie</span>}
+      </div>
+
+      {/* Game header line (mirrors GameViewer) */}
+      <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <div>
+          {isEdit ? (
+            <span>
+              <span style={{ fontWeight: 600 }}>
+                {headers.White || '?'}{headers.WhiteElo ? ` (${headers.WhiteElo})` : ''}
+              </span>
+              <span style={{ margin: '0 0.5rem', color: '#888' }}>vs</span>
+              <span style={{ fontWeight: 600 }}>
+                {headers.Black || '?'}{headers.BlackElo ? ` (${headers.BlackElo})` : ''}
+              </span>
+              {headers.Result && headers.Result !== '*' && (
+                <span style={{ marginLeft: '1rem', color: '#666' }}>{headers.Result}</span>
+              )}
+            </span>
+          ) : (
+            <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Nová partie</h2>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          {isEdit && (headers.Event || headers.Date) && (
+            <span style={{ color: '#888', fontSize: '0.85rem' }}>
+              {headers.Event}{headers.Date ? ` · ${headers.Date}` : ''}
+            </span>
+          )}
           <button onClick={handleDiscard} style={secondaryBtn}>Zahodit</button>
-          <button onClick={handleSave} style={primaryBtn} disabled={saveMutation.isPending}>
+          <button
+            onClick={handleSave}
+            style={{ ...primaryBtn, ...(dirty && !saveMutation.isPending ? null : disabledOverlay) }}
+            disabled={!dirty || saveMutation.isPending}
+            title={!dirty ? 'Žádné změny k uložení' : undefined}
+          >
             {saveMutation.isPending ? 'Ukládám...' : 'Uložit'}
           </button>
         </div>
@@ -367,6 +477,7 @@ export function GameEditor() {
             editable={!pending && !replaceConfirm}
             lastMove={boardLastMove}
             onMove={handleBoardMove}
+            autoShapes={bestMoveArrow ? [bestMoveArrow] : []}
           />
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', justifyContent: 'center' }}>
             <NavButton onClick={() => setCursor(-1)} disabled={cursor === -1 || navLocked} label="|◀" title="Na začátek (Home)" />
@@ -375,6 +486,7 @@ export function GameEditor() {
             <NavButton onClick={() => setCursor(moves.length - 1)} disabled={atEnd || navLocked} label="▶|" title="Na konec (End)" />
           </div>
           {pending && <ReplaceMoveInline onChoice={handleReplaceChoice} />}
+          <Analysis fen={boardFen} onBestMove={handleBestMove} />
           <OpeningBook fen={boardFen} />
         </div>
 
@@ -421,6 +533,26 @@ function hasHeaderContent(h: EditorHeaders): boolean {
   });
 }
 
+function movesArraysEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function buildDiscardMessage(movesDirty: boolean, headersDirty: boolean, isEdit: boolean): string {
+  const what = movesDirty && headersDirty
+    ? 'Tahy i hlavička'
+    : movesDirty
+      ? 'Úpravy tahů'
+      : 'Úpravy hlavičky';
+  if (isEdit) {
+    return `Zahodit neuložené změny?\n${what} budou ztraceny, partie zůstane beze změn.`;
+  }
+  return `Zahodit neuloženou partii?\n${what} budou ztraceny.`;
+}
+
 function extractLastMoveFromFens(prevFen: string, _newFen: string, san: string): [string, string] | undefined {
   try {
     const chess = new Chess(prevFen);
@@ -456,6 +588,11 @@ const secondaryBtn: React.CSSProperties = {
   border: '1px solid #ddd',
   borderRadius: 4,
   background: '#fff',
+};
+
+const disabledOverlay: React.CSSProperties = {
+  opacity: 0.5,
+  cursor: 'not-allowed',
 };
 
 function navBtnStyle(disabled?: boolean): React.CSSProperties {
