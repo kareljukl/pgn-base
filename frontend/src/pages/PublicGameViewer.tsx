@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { DrawShape } from 'chessground/draw';
@@ -8,6 +8,9 @@ import { Board } from '../components/Board/Board';
 import { MoveList } from '../components/MoveList/MoveList';
 import { Analysis } from '../components/Analysis/Analysis';
 import { OpeningExplorer } from '../components/OpeningExplorer/OpeningExplorer';
+import { useVariantArrowsToggle } from '../hooks/useVariantArrowsToggle';
+import { buildVariantArrows } from '../lib/variantArrows';
+import { getLastMoveSquares } from '../lib/lastMove';
 
 type GameData = {
   id: string;
@@ -53,8 +56,31 @@ export function PublicGameViewer() {
   const { id, gameId } = useParams<{ id: string; gameId: string }>();
   const location = useLocation();
   const navigate = useNavigate();
-  const { loadGame, goForward, goBack, goToStart, goToEnd, currentFen, info } = useGameStore();
+  const {
+    loadGame,
+    goForward,
+    goBack,
+    goToStart,
+    goToEnd,
+    goToSiblingUp,
+    goToSiblingDown,
+    enterVariation,
+    currentFen,
+    tree,
+    path,
+    info,
+  } = useGameStore();
   const [bestMoveArrow, setBestMoveArrow] = useState<DrawShape | null>(null);
+  const [variantArrowsOn] = useVariantArrowsToggle();
+  const variantArrows = useMemo(
+    () => (variantArrowsOn ? buildVariantArrows(tree, path, currentFen) : []),
+    [variantArrowsOn, tree, path, currentFen]
+  );
+  const allShapes = useMemo(
+    () => [...(bestMoveArrow ? [bestMoveArrow] : []), ...variantArrows],
+    [bestMoveArrow, variantArrows]
+  );
+  const lastMove = useMemo(() => getLastMoveSquares(tree, path), [tree, path]);
 
   const handleBestMove = useCallback((uci: string | null) => {
     setBestMoveArrow(uci ? { orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: 'green' } as DrawShape : null);
@@ -90,16 +116,23 @@ export function PublicGameViewer() {
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+      if (!(e.ctrlKey || e.metaKey || e.altKey) && /^Digit[1-9]$/.test(e.code)) {
+        e.preventDefault();
+        enterVariation(Number(e.code.slice(5)));
+        return;
+      }
       switch (e.key) {
         case 'ArrowRight': e.preventDefault(); goForward(); break;
         case 'ArrowLeft': e.preventDefault(); goBack(); break;
+        case 'ArrowUp': e.preventDefault(); goToSiblingUp(); break;
+        case 'ArrowDown': e.preventDefault(); goToSiblingDown(); break;
         case 'Home': e.preventDefault(); goToStart(); break;
         case 'End': e.preventDefault(); goToEnd(); break;
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [goForward, goBack, goToStart, goToEnd]);
+  }, [goForward, goBack, goToStart, goToEnd, goToSiblingUp, goToSiblingDown, enterVariation]);
 
   const handleSelectGame = (game: SidebarGame) => {
     navigate(`/public/${ctx!.dbId}/game/${game.id}`, {
@@ -134,7 +167,7 @@ export function PublicGameViewer() {
 
       <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
         <div style={{ flex: '0 0 auto', width: 'min(480px, 100%)' }}>
-          <Board fen={currentFen} autoShapes={bestMoveArrow ? [bestMoveArrow] : []} />
+          <Board fen={currentFen} lastMove={lastMove} autoShapes={allShapes} />
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', justifyContent: 'center' }}>
             {(['|◀', '◀', '▶', '▶|'] as const).map((label, i) => (
               <button

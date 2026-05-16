@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { DrawShape } from 'chessground/draw';
@@ -17,6 +17,9 @@ import { MoveList } from '../components/MoveList/MoveList';
 import { Analysis } from '../components/Analysis/Analysis';
 import { OpeningExplorer } from '../components/OpeningExplorer/OpeningExplorer';
 import { OpeningBook } from '../components/OpeningBook/OpeningBook';
+import { useVariantArrowsToggle } from '../hooks/useVariantArrowsToggle';
+import { buildVariantArrows } from '../lib/variantArrows';
+import { getLastMoveSquares } from '../lib/lastMove';
 
 type GameData = {
   id: string;
@@ -67,8 +70,32 @@ export function GameViewer() {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { loadGame, goForward, goBack, goToStart, goToEnd, currentFen, info, getCurrentMoveIndex } = useGameStore();
+  const {
+    loadGame,
+    goForward,
+    goBack,
+    goToStart,
+    goToEnd,
+    goToSiblingUp,
+    goToSiblingDown,
+    enterVariation,
+    currentFen,
+    tree,
+    path,
+    info,
+    getCurrentMoveIndex,
+  } = useGameStore();
   const [bestMoveArrow, setBestMoveArrow] = useState<DrawShape | null>(null);
+  const [variantArrowsOn] = useVariantArrowsToggle();
+  const variantArrows = useMemo(
+    () => (variantArrowsOn ? buildVariantArrows(tree, path, currentFen) : []),
+    [variantArrowsOn, tree, path, currentFen]
+  );
+  const allShapes = useMemo(
+    () => [...(bestMoveArrow ? [bestMoveArrow] : []), ...variantArrows],
+    [bestMoveArrow, variantArrows]
+  );
+  const lastMove = useMemo(() => getLastMoveSquares(tree, path), [tree, path]);
   const [showHeaders, setShowHeaders] = useState(false);
   const [headers, setHeaders] = useState<EditorHeaders>(emptyHeaders);
   const [initialHeaders, setInitialHeaders] = useState<EditorHeaders>(emptyHeaders);
@@ -115,6 +142,11 @@ export function GameViewer() {
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+      if (!(e.ctrlKey || e.metaKey || e.altKey) && /^Digit[1-9]$/.test(e.code)) {
+        e.preventDefault();
+        enterVariation(Number(e.code.slice(5)));
+        return;
+      }
       switch (e.key) {
         case 'ArrowRight':
           e.preventDefault();
@@ -123,6 +155,14 @@ export function GameViewer() {
         case 'ArrowLeft':
           e.preventDefault();
           goBack();
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          goToSiblingUp();
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          goToSiblingDown();
           break;
         case 'Home':
           e.preventDefault();
@@ -137,7 +177,7 @@ export function GameViewer() {
 
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [goForward, goBack, goToStart, goToEnd]);
+  }, [goForward, goBack, goToStart, goToEnd, goToSiblingUp, goToSiblingDown, enterVariation]);
 
   const handleSelectGame = (game: SidebarGame) => {
     navigate(`/db/${ctx!.dbId}/game/${game.id}`, {
@@ -267,7 +307,7 @@ export function GameViewer() {
       <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
         {/* Left column: Board + controls + analysis */}
         <div style={{ flex: '0 0 auto', width: 'min(480px, 100%)' }}>
-          <Board fen={currentFen} autoShapes={bestMoveArrow ? [bestMoveArrow] : []} />
+          <Board fen={currentFen} lastMove={lastMove} autoShapes={allShapes} />
 
           {/* Navigation buttons */}
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', justifyContent: 'center' }}>

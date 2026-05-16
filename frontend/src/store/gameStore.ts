@@ -1,5 +1,15 @@
 import { create } from 'zustand';
 import { parseMoveText, type MoveTree, type MoveNode } from '../lib/moveTree';
+import {
+  getMoveIndexFromPath,
+  setMoveIndexInPath,
+  getMovesAtPath,
+  getFenFromPath,
+  getSiblingsAtPath,
+  getDigitTarget,
+  exitVariationBack,
+  exitVariationForward,
+} from '../lib/navigation';
 
 type GameInfo = {
   white?: string;
@@ -31,6 +41,9 @@ type GameState = {
   goBack: () => void;
   goToStart: () => void;
   goToEnd: () => void;
+  goToSiblingUp: () => void;
+  goToSiblingDown: () => void;
+  enterVariation: (digit: number) => void;
 
   // Derived
   isAtStart: () => boolean;
@@ -115,6 +128,41 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
+  goToSiblingUp: () => {
+    const { tree, path } = get();
+    const r = getSiblingsAtPath(tree, path);
+    if (r) {
+      if (r.currentIdx === 0) return;
+      const target = r.siblings[r.currentIdx - 1];
+      set({ path: target, currentFen: getFenFromPath(tree, target) });
+      return;
+    }
+    const target = exitVariationBack(tree, path);
+    if (!target) return;
+    set({ path: target, currentFen: getFenFromPath(tree, target) });
+  },
+
+  goToSiblingDown: () => {
+    const { tree, path } = get();
+    const r = getSiblingsAtPath(tree, path);
+    if (r) {
+      if (r.currentIdx >= r.siblings.length - 1) return;
+      const target = r.siblings[r.currentIdx + 1];
+      set({ path: target, currentFen: getFenFromPath(tree, target) });
+      return;
+    }
+    const target = exitVariationForward(tree, path);
+    if (!target) return;
+    set({ path: target, currentFen: getFenFromPath(tree, target) });
+  },
+
+  enterVariation: (digit) => {
+    const { tree, path } = get();
+    const target = getDigitTarget(tree, path, digit);
+    if (!target) return;
+    set({ path: target, currentFen: getFenFromPath(tree, target) });
+  },
+
   isAtStart: () => {
     return get().path.length === 0;
   },
@@ -135,52 +183,3 @@ export const useGameStore = create<GameState>((set, get) => ({
     return getMoveIndexFromPath(get().path);
   },
 }));
-
-// Helper: get the move index from a path
-function getMoveIndexFromPath(path: number[]): number {
-  if (path.length === 0) return -1;
-  return path[path.length - 1];
-}
-
-// Helper: set the move index in a path (last element)
-function setMoveIndexInPath(path: number[], idx: number): number[] {
-  if (path.length === 0) return [idx];
-  const newPath = [...path];
-  newPath[newPath.length - 1] = idx;
-  return newPath;
-}
-
-// Helper: get the moves array that the current path is navigating in
-function getMovesAtPath(tree: MoveTree, path: number[]): MoveNode[] {
-  if (path.length <= 1) return tree.moves;
-
-  let moves = tree.moves;
-  // Path structure: [moveIdx, varIdx, moveIdx, varIdx, ..., moveIdx]
-  // We need to traverse to the correct variation
-  for (let i = 0; i < path.length - 1; i += 2) {
-    const moveIdx = path[i];
-    const varIdx = path[i + 1];
-    if (varIdx === undefined) break;
-    if (moveIdx < moves.length && varIdx < moves[moveIdx].variations.length) {
-      moves = moves[moveIdx].variations[varIdx];
-    } else {
-      break;
-    }
-  }
-
-  return moves;
-}
-
-// Helper: get the FEN at a specific path
-function getFenFromPath(tree: MoveTree, path: number[]): string {
-  if (path.length === 0) return tree.startFen;
-
-  const moves = getMovesAtPath(tree, path);
-  const moveIdx = getMoveIndexFromPath(path);
-
-  if (moveIdx >= 0 && moveIdx < moves.length) {
-    return moves[moveIdx].fen;
-  }
-
-  return tree.startFen;
-}
