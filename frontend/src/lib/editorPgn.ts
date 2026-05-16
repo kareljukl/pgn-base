@@ -1,9 +1,11 @@
 export type EditorHeaders = {
   Event: string;
+  Site: string;
   White: string;
   Black: string;
   Date: string;
   Round: string;
+  Board: string;
   Result: string;
   WhiteElo: string;
   BlackElo: string;
@@ -19,10 +21,12 @@ export type EditorHeaders = {
 export function emptyHeaders(): EditorHeaders {
   return {
     Event: '',
+    Site: '',
     White: '',
     Black: '',
     Date: todayPgnDate(),
     Round: '',
+    Board: '',
     Result: '*',
     WhiteElo: '',
     BlackElo: '',
@@ -65,8 +69,10 @@ export function buildEditorMovesPgn(moves: string[], result: string): string {
 
 export type GameRowLike = {
   event: string | null;
+  site: string | null;
   date: string | null;
   round: string | null;
+  board: string | null;
   white: string | null;
   black: string | null;
   white_elo: number | null;
@@ -81,13 +87,21 @@ export type GameRowLike = {
   eco: string | null;
 };
 
+const HEADER_KEYS: (keyof EditorHeaders)[] = [
+  'Event', 'Site', 'White', 'Black', 'Date', 'Round', 'Board', 'Result',
+  'WhiteElo', 'BlackElo', 'WhiteTeam', 'BlackTeam',
+  'WhiteFideId', 'BlackFideId', 'WhiteCzId', 'BlackCzId', 'ECO',
+];
+
 export function headersFromGameRow(g: GameRowLike): EditorHeaders {
   return {
     Event: g.event ?? '',
+    Site: g.site ?? '',
     White: g.white ?? '',
     Black: g.black ?? '',
     Date: g.date ?? '',
     Round: g.round ?? '',
+    Board: g.board ?? '',
     Result: g.result ?? '*',
     WhiteElo: g.white_elo != null ? String(g.white_elo) : '',
     BlackElo: g.black_elo != null ? String(g.black_elo) : '',
@@ -102,22 +116,12 @@ export function headersFromGameRow(g: GameRowLike): EditorHeaders {
 }
 
 export function headersEqual(a: EditorHeaders, b: EditorHeaders): boolean {
-  const keys: (keyof EditorHeaders)[] = [
-    'Event', 'White', 'Black', 'Date', 'Round', 'Result',
-    'WhiteElo', 'BlackElo', 'WhiteTeam', 'BlackTeam',
-    'WhiteFideId', 'BlackFideId', 'WhiteCzId', 'BlackCzId', 'ECO',
-  ];
-  return keys.every((k) => a[k] === b[k]);
+  return HEADER_KEYS.every((k) => a[k] === b[k]);
 }
 
 export function toApiHeaders(h: EditorHeaders): Record<string, string> {
   const out: Record<string, string> = {};
-  const keys: (keyof EditorHeaders)[] = [
-    'Event', 'White', 'Black', 'Date', 'Round', 'Result',
-    'WhiteElo', 'BlackElo', 'WhiteTeam', 'BlackTeam',
-    'WhiteFideId', 'BlackFideId', 'WhiteCzId', 'BlackCzId', 'ECO',
-  ];
-  for (const k of keys) {
+  for (const k of HEADER_KEYS) {
     const v = h[k]?.trim();
     if (v) out[k] = v;
   }

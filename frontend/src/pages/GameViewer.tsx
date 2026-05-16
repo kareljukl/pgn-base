@@ -11,8 +11,10 @@ import {
   headersFromGameRow,
   headersEqual,
   toApiHeaders,
+  buildEditorMovesPgn,
   type EditorHeaders,
 } from '../lib/editorPgn';
+import { linearizeMoves, linearPosition, hasAnyVariation } from '../lib/navigation';
 import { MoveList } from '../components/MoveList/MoveList';
 import { Analysis } from '../components/Analysis/Analysis';
 import { OpeningExplorer } from '../components/OpeningExplorer/OpeningExplorer';
@@ -20,6 +22,7 @@ import { OpeningBook } from '../components/OpeningBook/OpeningBook';
 import { useVariantArrowsToggle } from '../hooks/useVariantArrowsToggle';
 import { buildVariantArrows } from '../lib/variantArrows';
 import { getLastMoveSquares } from '../lib/lastMove';
+import { removeDiacritics, countArtifacts } from '../lib/pgnUtils';
 
 type GameData = {
   id: string;
@@ -29,8 +32,10 @@ type GameData = {
   black_elo: number | null;
   result: string | null;
   event: string | null;
+  site: string | null;
   date: string | null;
   round: string | null;
+  board: string | null;
   white_team: string | null;
   black_team: string | null;
   white_fide_id: string | null;
@@ -76,13 +81,13 @@ export function GameViewer() {
     goBack,
     goToStart,
     goToEnd,
+    goToMove,
     goToSiblingUp,
     goToSiblingDown,
     enterVariation,
     currentFen,
     tree,
     path,
-    info,
     getCurrentMoveIndex,
   } = useGameStore();
   const [bestMoveArrow, setBestMoveArrow] = useState<DrawShape | null>(null);
@@ -96,11 +101,15 @@ export function GameViewer() {
     [bestMoveArrow, variantArrows]
   );
   const lastMove = useMemo(() => getLastMoveSquares(tree, path), [tree, path]);
+  const hasVariations = useMemo(() => hasAnyVariation(tree), [tree]);
   const [showHeaders, setShowHeaders] = useState(false);
   const [headers, setHeaders] = useState<EditorHeaders>(emptyHeaders);
   const [initialHeaders, setInitialHeaders] = useState<EditorHeaders>(emptyHeaders);
   const [showRequired, setShowRequired] = useState(false);
   const [headerError, setHeaderError] = useState<string | null>(null);
+  const [cleanedMovesPgn, setCleanedMovesPgn] = useState<string | null>(null);
+  const [cleanupSummary, setCleanupSummary] = useState<string | null>(null);
+  const [pathBeforeCleanup, setPathBeforeCleanup] = useState<number[] | null>(null);
 
   const handleBestMove = useCallback((uci: string | null) => {
     setBestMoveArrow(uci ? { orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: 'green' } as DrawShape : null);
@@ -135,6 +144,9 @@ export function GameViewer() {
       setInitialHeaders(h);
       setShowRequired(false);
       setHeaderError(null);
+      setCleanedMovesPgn(null);
+      setCleanupSummary(null);
+      setPathBeforeCleanup(null);
     }
   }, [data, loadGame]);
 
@@ -186,16 +198,22 @@ export function GameViewer() {
     });
   };
 
-  const dirty = !headersEqual(headers, initialHeaders);
+  const headersDirty = !headersEqual(headers, initialHeaders);
+  const movesDirty = cleanedMovesPgn !== null;
+  const dirty = headersDirty || movesDirty;
 
   const saveMutation = useMutation({
     mutationFn: () =>
       api.patch<{ ok: true }>(`/databases/${id}/games/${gameId}`, {
         headers: toApiHeaders(headers),
+        ...(cleanedMovesPgn !== null ? { movesPgn: cleanedMovesPgn } : {}),
       }),
     onSuccess: () => {
       setShowRequired(false);
       setHeaderError(null);
+      setCleanedMovesPgn(null);
+      setCleanupSummary(null);
+      setPathBeforeCleanup(null);
       queryClient.invalidateQueries({ queryKey: ['game', id, gameId] });
       queryClient.invalidateQueries({ queryKey: ['games', id] });
       queryClient.invalidateQueries({ queryKey: ['sidebar-games', id] });
@@ -217,8 +235,78 @@ export function GameViewer() {
 
   const handleDiscardHeaders = () => {
     setHeaders(initialHeaders);
+    if (cleanedMovesPgn !== null && data?.game) {
+      loadGame(data.game.moves_pgn, {});
+      if (pathBeforeCleanup && pathBeforeCleanup.length > 0) {
+        goToMove(pathBeforeCleanup);
+      }
+    }
+    setCleanedMovesPgn(null);
+    setCleanupSummary(null);
+    setPathBeforeCleanup(null);
     setShowRequired(false);
     setHeaderError(null);
+  };
+
+  const handleStripDiacritics = () => {
+    const fields: (keyof EditorHeaders)[] = ['Event', 'Site', 'White', 'Black', 'WhiteTeam', 'BlackTeam'];
+    const next = { ...headers };
+    let changed = 0;
+    for (const f of fields) {
+      const stripped = removeDiacritics(headers[f]);
+      if (stripped !== headers[f]) {
+        next[f] = stripped;
+        changed++;
+      }
+    }
+    setHeaders(next);
+    if (changed === 0) {
+      setCleanupSummary('Diakritika nenalezena.');
+    } else {
+      setShowHeaders(true);
+      const word = changed === 1 ? 'tagu' : 'tagů';
+      setCleanupSummary(`Diakritika odstraněna z ${changed} ${word}. Klikněte Uložit pro potvrzení.`);
+    }
+  };
+
+  const handleCleanupPgn = () => {
+    const source = cleanedMovesPgn ?? data?.game.moves_pgn ?? '';
+    const counts = countArtifacts(source);
+    const promotedVariation = path.length >= 3;
+    const totalArtifacts = counts.comments + counts.variations + counts.nags + counts.glyphs + counts.escapes;
+
+    if (totalArtifacts === 0 && !promotedVariation) {
+      setCleanupSummary('PGN je již čistý.');
+      return;
+    }
+
+    if (pathBeforeCleanup === null) {
+      setPathBeforeCleanup(path);
+    }
+
+    const lineMoves = linearizeMoves(tree, path);
+    const sanList = lineMoves.map((m) => m.san);
+    const newIdx = linearPosition(tree, path);
+    const cleaned = buildEditorMovesPgn(sanList, headers.Result || '*');
+
+    setCleanedMovesPgn(cleaned);
+    loadGame(cleaned, {});
+    if (newIdx >= 0) {
+      goToMove([newIdx]);
+    }
+
+    const parts: string[] = [];
+    if (counts.comments) parts.push(`${counts.comments} ${plural(counts.comments, 'komentář', 'komentáře', 'komentářů')}`);
+    if (counts.variations) parts.push(`${counts.variations} ${plural(counts.variations, 'varianta', 'varianty', 'variant')}`);
+    if (counts.nags) parts.push(`${counts.nags} NAG`);
+    if (counts.glyphs) parts.push(`${counts.glyphs} ${plural(counts.glyphs, 'glyf', 'glyfy', 'glyfů')}`);
+    if (counts.escapes) parts.push(`${counts.escapes} ${plural(counts.escapes, 'escape řádek', 'escape řádky', 'escape řádků')}`);
+
+    const segments: string[] = [];
+    if (parts.length > 0) segments.push(`Odstraněno: ${parts.join(', ')}.`);
+    if (promotedVariation) segments.push('Aktuální varianta povýšena na hlavní.');
+    segments.push('Klikněte Uložit pro potvrzení.');
+    setCleanupSummary(segments.join(' '));
   };
 
   const handleEditGame = () => {
@@ -229,7 +317,7 @@ export function GameViewer() {
   };
 
   const handleToggleHeaders = () => {
-    if (showHeaders && dirty) return; // can't close while dirty
+    if (showHeaders && headersDirty) return; // can't close while header form has unsaved edits
     setShowHeaders((v) => !v);
     if (showHeaders) {
       setShowRequired(false);
@@ -247,51 +335,73 @@ export function GameViewer() {
         <div>
           <div>
             <span style={{ fontWeight: 600 }}>
-              {info.white || '?'}{info.whiteElo ? ` (${info.whiteElo})` : ''}
+              {headers.White || '?'}{headers.WhiteElo ? ` (${headers.WhiteElo})` : ''}
             </span>
             <span style={{ margin: '0 0.5rem', color: '#888' }}>vs</span>
             <span style={{ fontWeight: 600 }}>
-              {info.black || '?'}{info.blackElo ? ` (${info.blackElo})` : ''}
+              {headers.Black || '?'}{headers.BlackElo ? ` (${headers.BlackElo})` : ''}
             </span>
-            <span style={{ marginLeft: '1rem', color: '#666' }}>{info.result}</span>
+            <span style={{ marginLeft: '1rem', color: '#666' }}>{headers.Result}</span>
           </div>
-          <PlayerIds info={info} />
+          <PlayerIds headers={headers} />
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
           <span style={{ color: '#888', fontSize: '0.85rem' }}>
-            {info.event}{info.date ? ` · ${info.date}` : ''}
+            {headers.Event}{headers.Date ? ` · ${headers.Date}` : ''}
           </span>
           <button
             onClick={handleToggleHeaders}
-            disabled={dirty}
-            title={dirty ? 'Nejprve uložte nebo zahoďte změny' : undefined}
+            disabled={headersDirty}
+            title={headersDirty ? 'Nejprve uložte nebo zahoďte změny v hlavičce' : undefined}
             style={{
               fontSize: '0.8rem',
               padding: '0.2rem 0.5rem',
               border: '1px solid #ddd',
               borderRadius: 4,
               background: showHeaders ? '#eef2ff' : '#fff',
-              color: dirty ? '#999' : '#333',
-              cursor: dirty ? 'not-allowed' : 'pointer',
+              color: headersDirty ? '#999' : '#333',
+              cursor: headersDirty ? 'not-allowed' : 'pointer',
             }}
           >
-            {showHeaders && !dirty ? 'Zavřít hlavičku' : 'Hlavička'}
+            {showHeaders && !headersDirty ? 'Zavřít hlavičku' : 'Upravit hlavičku'}
           </button>
           <button
             onClick={handleEditGame}
-            disabled={dirty}
-            title={dirty ? 'Nejprve uložte nebo zahoďte změny v hlavičce' : undefined}
+            disabled={dirty || hasVariations}
+            title={
+              dirty
+                ? 'Nejprve uložte nebo zahoďte změny'
+                : hasVariations
+                  ? 'Tahy nelze upravovat, dokud partie obsahuje varianty (použijte Vyčisti PGN)'
+                  : undefined
+            }
             style={{
               fontSize: '0.8rem',
               padding: '0.2rem 0.5rem',
               border: '1px solid #ddd',
               borderRadius: 4,
               background: '#fff',
-              color: dirty ? '#999' : '#333',
-              cursor: dirty ? 'not-allowed' : 'pointer',
+              color: dirty || hasVariations ? '#999' : '#333',
+              cursor: dirty || hasVariations ? 'not-allowed' : 'pointer',
             }}
           >
-            Upravit partii
+            Upravit tahy
+          </button>
+          <button
+            onClick={handleStripDiacritics}
+            disabled={saveMutation.isPending}
+            title="Odstraní diakritiku z Event, Site, jmen hráčů a názvů týmů"
+            style={topBarBtnStyle}
+          >
+            Odstranění diakritiky
+          </button>
+          <button
+            onClick={handleCleanupPgn}
+            disabled={saveMutation.isPending}
+            title="Zachová pouze aktuálně zobrazenou variantu"
+            style={topBarBtnStyle}
+          >
+            Vyčisti PGN
           </button>
           <a
             href={`${API_ORIGIN}/api/v1/databases/${id}/games/${gameId}/export?mode=full`}
@@ -302,6 +412,26 @@ export function GameViewer() {
           </a>
         </div>
       </div>
+
+      {cleanupSummary && (
+        <div style={{ marginBottom: '0.75rem', fontSize: '0.85rem', color: '#555', padding: '0.4rem 0.6rem', background: '#f3f4f6', borderRadius: 4 }}>
+          {cleanupSummary}
+        </div>
+      )}
+
+      {dirty && (
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+          {headerError && (
+            <span style={{ color: '#dc2626', fontSize: '0.8rem', marginRight: 'auto' }}>{headerError}</span>
+          )}
+          <button onClick={handleDiscardHeaders} disabled={saveMutation.isPending} style={discardBtnStyle}>
+            Zahodit změny
+          </button>
+          <button onClick={handleSaveHeaders} disabled={saveMutation.isPending} style={saveBtnStyle}>
+            {saveMutation.isPending ? 'Ukládám...' : 'Uložit'}
+          </button>
+        </div>
+      )}
 
       {/* Main layout */}
       <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
@@ -331,34 +461,12 @@ export function GameViewer() {
         <div style={{ flex: 1, minWidth: 250, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           <MoveList />
           {showHeaders && (
-            <div>
-              <HeaderForm
-                headers={headers}
-                onChange={setHeaders}
-                showRequired={showRequired}
-              />
-              {headerError && (
-                <p style={{ color: '#dc2626', fontSize: '0.8rem', margin: '0.4rem 0 0' }}>{headerError}</p>
-              )}
-              {dirty && (
-                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', justifyContent: 'flex-end' }}>
-                  <button
-                    onClick={handleDiscardHeaders}
-                    disabled={saveMutation.isPending}
-                    style={discardBtnStyle}
-                  >
-                    Zahodit změny
-                  </button>
-                  <button
-                    onClick={handleSaveHeaders}
-                    disabled={saveMutation.isPending}
-                    style={saveBtnStyle}
-                  >
-                    {saveMutation.isPending ? 'Ukládám...' : 'Uložit'}
-                  </button>
-                </div>
-              )}
-            </div>
+            <HeaderForm
+              headers={headers}
+              onChange={setHeaders}
+              showRequired={showRequired}
+              initialHeaders={initialHeaders}
+            />
           )}
         </div>
       </div>
@@ -535,14 +643,9 @@ function resultColor(result: string | null): string {
   return '#888';
 }
 
-function PlayerIds({ info }: { info: {
-  whiteFideId?: string;
-  blackFideId?: string;
-  whiteCzId?: string;
-  blackCzId?: string;
-} }) {
-  const whiteIds = formatIds(info.whiteFideId, info.whiteCzId);
-  const blackIds = formatIds(info.blackFideId, info.blackCzId);
+function PlayerIds({ headers }: { headers: EditorHeaders }) {
+  const whiteIds = formatIds(headers.WhiteFideId, headers.WhiteCzId);
+  const blackIds = formatIds(headers.BlackFideId, headers.BlackCzId);
   if (!whiteIds && !blackIds) return null;
   return (
     <div style={{ fontSize: '0.75rem', color: '#888', marginTop: '0.15rem' }}>
@@ -553,11 +656,27 @@ function PlayerIds({ info }: { info: {
   );
 }
 
-function formatIds(fideId?: string, czId?: string): string {
+function formatIds(fideId: string, czId: string): string {
   const parts: string[] = [];
   if (fideId) parts.push(`FIDE ${fideId}`);
   if (czId) parts.push(`ČŠS ${czId}`);
   return parts.join(', ');
+}
+
+const topBarBtnStyle: React.CSSProperties = {
+  fontSize: '0.8rem',
+  padding: '0.2rem 0.5rem',
+  border: '1px solid #ddd',
+  borderRadius: 4,
+  background: '#fff',
+  color: '#333',
+  cursor: 'pointer',
+};
+
+function plural(n: number, one: string, few: string, many: string): string {
+  if (n === 1) return one;
+  if (n >= 2 && n <= 4) return few;
+  return many;
 }
 
 const saveBtnStyle: React.CSSProperties = {

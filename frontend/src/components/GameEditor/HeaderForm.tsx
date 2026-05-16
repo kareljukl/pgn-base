@@ -4,41 +4,49 @@ type Props = {
   headers: EditorHeaders;
   onChange: (next: EditorHeaders) => void;
   showRequired: boolean;
+  initialHeaders?: EditorHeaders;
 };
 
 const RESULTS = ['*', '1-0', '0-1', '1/2-1/2'];
 
-export function HeaderForm({ headers, onChange, showRequired }: Props) {
+export function HeaderForm({ headers, onChange, showRequired, initialHeaders }: Props) {
   const set = <K extends keyof EditorHeaders>(key: K, value: EditorHeaders[K]) => {
     onChange({ ...headers, [key]: value });
   };
 
   const missing = (key: keyof EditorHeaders) => showRequired && !headers[key].trim();
+  const changed = (key: keyof EditorHeaders) => !!initialHeaders && headers[key] !== initialHeaders[key];
 
   return (
     <div style={containerStyle}>
       <div style={headerStyle}>Hlavičky partie</div>
       <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', gap: '0.4rem 0.5rem', alignItems: 'center' }}>
         <Label text="Event *" />
-        <Input value={headers.Event} onChange={(v) => set('Event', v)} invalid={missing('Event')} />
+        <Input value={headers.Event} onChange={(v) => set('Event', v)} invalid={missing('Event')} changed={changed('Event')} />
+
+        <Label text="Site" />
+        <Input value={headers.Site} onChange={(v) => set('Site', v)} changed={changed('Site')} />
 
         <Label text="White *" />
-        <Input value={headers.White} onChange={(v) => set('White', v)} invalid={missing('White')} />
+        <Input value={headers.White} onChange={(v) => set('White', v)} invalid={missing('White')} changed={changed('White')} />
 
         <Label text="Black *" />
-        <Input value={headers.Black} onChange={(v) => set('Black', v)} invalid={missing('Black')} />
+        <Input value={headers.Black} onChange={(v) => set('Black', v)} invalid={missing('Black')} changed={changed('Black')} />
 
         <Label text="Date" />
-        <Input value={headers.Date} onChange={(v) => set('Date', v)} placeholder="YYYY.MM.DD" />
+        <Input value={headers.Date} onChange={(v) => set('Date', v)} placeholder="YYYY.MM.DD" changed={changed('Date')} />
 
         <Label text="Round" />
-        <Input value={headers.Round} onChange={(v) => set('Round', v)} />
+        <Input value={headers.Round} onChange={(v) => set('Round', v)} changed={changed('Round')} />
+
+        <Label text="Board" />
+        <Input value={headers.Board} onChange={(v) => set('Board', v)} changed={changed('Board')} />
 
         <Label text="Result" />
         <select
           value={headers.Result}
           onChange={(e) => set('Result', e.target.value)}
-          style={inputStyle}
+          style={{ ...inputStyle, background: changed('Result') ? '#fef9c3' : '#fff' }}
         >
           {RESULTS.map((r) => (
             <option key={r} value={r}>{r}</option>
@@ -46,28 +54,28 @@ export function HeaderForm({ headers, onChange, showRequired }: Props) {
         </select>
 
         <Label text="WhiteElo" />
-        <Input value={headers.WhiteElo} onChange={(v) => set('WhiteElo', v)} inputMode="numeric" />
+        <Input value={headers.WhiteElo} onChange={(v) => set('WhiteElo', v)} inputMode="numeric" changed={changed('WhiteElo')} />
 
         <Label text="BlackElo" />
-        <Input value={headers.BlackElo} onChange={(v) => set('BlackElo', v)} inputMode="numeric" />
+        <Input value={headers.BlackElo} onChange={(v) => set('BlackElo', v)} inputMode="numeric" changed={changed('BlackElo')} />
 
         <Label text="WhiteTeam" />
-        <Input value={headers.WhiteTeam} onChange={(v) => set('WhiteTeam', v)} />
+        <Input value={headers.WhiteTeam} onChange={(v) => set('WhiteTeam', v)} changed={changed('WhiteTeam')} />
 
         <Label text="BlackTeam" />
-        <Input value={headers.BlackTeam} onChange={(v) => set('BlackTeam', v)} />
+        <Input value={headers.BlackTeam} onChange={(v) => set('BlackTeam', v)} changed={changed('BlackTeam')} />
 
         <Label text="WhiteFideId" />
-        <Input value={headers.WhiteFideId} onChange={(v) => set('WhiteFideId', v)} />
+        <Input value={headers.WhiteFideId} onChange={(v) => set('WhiteFideId', v)} changed={changed('WhiteFideId')} />
 
         <Label text="BlackFideId" />
-        <Input value={headers.BlackFideId} onChange={(v) => set('BlackFideId', v)} />
+        <Input value={headers.BlackFideId} onChange={(v) => set('BlackFideId', v)} changed={changed('BlackFideId')} />
 
         <Label text="WhiteCzId" />
-        <Input value={headers.WhiteCzId} onChange={(v) => set('WhiteCzId', v)} />
+        <Input value={headers.WhiteCzId} onChange={(v) => set('WhiteCzId', v)} changed={changed('WhiteCzId')} />
 
         <Label text="BlackCzId" />
-        <Input value={headers.BlackCzId} onChange={(v) => set('BlackCzId', v)} />
+        <Input value={headers.BlackCzId} onChange={(v) => set('BlackCzId', v)} changed={changed('BlackCzId')} />
       </div>
     </div>
   );
@@ -83,12 +91,14 @@ function Input({
   placeholder,
   invalid,
   inputMode,
+  changed,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   invalid?: boolean;
   inputMode?: 'numeric' | 'text';
+  changed?: boolean;
 }) {
   return (
     <input
@@ -99,8 +109,8 @@ function Input({
       onChange={(e) => onChange(e.target.value)}
       style={{
         ...inputStyle,
-        borderColor: invalid ? '#dc2626' : '#ccc',
-        background: invalid ? '#fef2f2' : '#fff',
+        borderColor: invalid ? '#dc2626' : changed ? '#facc15' : '#ccc',
+        background: invalid ? '#fef2f2' : changed ? '#fef9c3' : '#fff',
       }}
     />
   );

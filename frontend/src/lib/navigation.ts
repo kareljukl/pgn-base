@@ -176,6 +176,39 @@ export function exitVariationForward(tree: MoveTree, path: number[]): number[] |
   return null;
 }
 
+export function hasAnyVariation(tree: MoveTree): boolean {
+  return tree.moves.some((m) => m.variations.some((v) => v.length > 0));
+}
+
+export function linearizeMoves(tree: MoveTree, path: number[]): MoveNode[] {
+  const result: MoveNode[] = [];
+  let moves = tree.moves;
+  for (let i = 0; i + 1 < path.length; i += 2) {
+    const mainIdx = path[i];
+    const varIdx = path[i + 1];
+    for (let j = 0; j < mainIdx && j < moves.length; j++) result.push(moves[j]);
+    if (mainIdx >= moves.length || varIdx >= moves[mainIdx].variations.length) return result;
+    moves = moves[mainIdx].variations[varIdx];
+  }
+  for (const m of moves) result.push(m);
+  return result;
+}
+
+export function linearPosition(tree: MoveTree, path: number[]): number {
+  if (path.length === 0) return -1;
+  let pos = 0;
+  let moves = tree.moves;
+  for (let i = 0; i + 1 < path.length; i += 2) {
+    const mainIdx = path[i];
+    const varIdx = path[i + 1];
+    pos += mainIdx;
+    if (mainIdx >= moves.length || varIdx >= moves[mainIdx].variations.length) return -1;
+    moves = moves[mainIdx].variations[varIdx];
+  }
+  pos += path[path.length - 1];
+  return pos;
+}
+
 export function getBranchAtCurrentFen(tree: MoveTree, path: number[]): BranchInfo | null {
   let nextNode: MoveNode | null = null;
 
