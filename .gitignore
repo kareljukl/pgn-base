@@ -6,3 +6,9 @@ dist/
 
 # Stockfish WASM binaries (installed via npm, copied to public/)
 frontend/public/stockfish-*
+
+# Build artifacts
+frontend/tsconfig.tsbuildinfo
+
+# Postman exports (reference only; schemas live in apichesscz.openapi.yaml)
+*.postman_collection.json
