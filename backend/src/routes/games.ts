@@ -13,6 +13,12 @@ type GameImport = {
   movesPgn: string;
 };
 
+type BulkUpdateItem = {
+  gameId: string;
+  headers: Record<string, string>;
+  movesPgn?: string;
+};
+
 // List games in a database
 games.get('/:dbId/games', authRequired, async (c) => {
   const user = c.get('user');
@@ -29,9 +35,10 @@ games.get('/:dbId/games', authRequired, async (c) => {
 
   const q = c.req.query('q') || '';
   const page = Math.max(1, parseInt(c.req.query('page') || '1'));
-  const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '25')));
+  const limit = Math.min(1000, Math.max(1, parseInt(c.req.query('limit') || '25')));
   const sort = c.req.query('sort') || 'date';
   const order = c.req.query('order') === 'asc' ? 'ASC' : 'DESC';
+  const includeMoves = c.req.query('includeMoves') === 'true';
 
   const allowedSorts = ['date', 'white', 'black', 'result', 'event', 'round'];
   const sortColumn = allowedSorts.includes(sort) ? sort : 'date';
@@ -49,11 +56,13 @@ games.get('/:dbId/games', authRequired, async (c) => {
     `SELECT COUNT(*) as total FROM games g ${whereClause}`
   ).bind(...params).first<{ total: number }>();
 
-  const results = await c.env.DB.prepare(
-    `SELECT g.id, g.event, g.site, g.date, g.round, g.board, g.white, g.black,
+  const selectCols = `g.id, g.event, g.site, g.date, g.round, g.board, g.white, g.black,
             g.white_elo, g.black_elo, g.white_team, g.black_team,
             g.white_fide_id, g.black_fide_id, g.white_cz_id, g.black_cz_id,
-            g.result, g.eco, g.ply_count
+            g.result, g.eco, g.ply_count${includeMoves ? ', g.moves_pgn' : ''}`;
+
+  const results = await c.env.DB.prepare(
+    `SELECT ${selectCols}
      FROM games g ${whereClause}
      ORDER BY g.${sortColumn} ${order}
      LIMIT ? OFFSET ?`
@@ -262,6 +271,118 @@ games.patch('/:dbId/games/:gameId', authRequired, async (c) => {
   ).bind(now, dbId).run();
 
   return c.json({ ok: true });
+});
+
+// Bulk update games (headers and optionally movesPgn)
+games.post('/:dbId/games/bulk-update', authRequired, async (c) => {
+  const user = c.get('user');
+  const dbId = c.req.param('dbId');
+
+  const db = await c.env.DB.prepare(
+    'SELECT * FROM databases WHERE id = ? AND owner_id = ?'
+  ).bind(dbId, user.id).first();
+
+  if (!db) {
+    return c.json({ error: 'Databáze nenalezena' }, 404);
+  }
+
+  const body = await c.req.json<{ updates: BulkUpdateItem[] }>();
+  if (!body || !Array.isArray(body.updates)) {
+    return c.json({ error: 'Očekáván objekt s polem "updates"' }, 400);
+  }
+
+  if (body.updates.length === 0) {
+    return c.json({ error: 'Žádné záznamy k aktualizaci' }, 400);
+  }
+
+  if (body.updates.length > MAX_IMPORT_GAMES) {
+    return c.json({ error: `Maximální počet záznamů v jedné dávce je ${MAX_IMPORT_GAMES}` }, 400);
+  }
+
+  for (const u of body.updates) {
+    if (!u || typeof u.gameId !== 'string' || typeof u.headers !== 'object' || u.headers === null) {
+      return c.json({ error: 'Neplatný formát položky updates' }, 400);
+    }
+  }
+
+  // Verify all gameIds belong to this database
+  const ids = body.updates.map((u) => u.gameId);
+  const placeholders = ids.map(() => '?').join(',');
+  const ownedRows = await c.env.DB.prepare(
+    `SELECT id FROM games WHERE database_id = ? AND id IN (${placeholders})`
+  ).bind(dbId, ...ids).all<{ id: string }>();
+  const ownedSet = new Set(ownedRows.results.map((r) => r.id));
+  if (ownedSet.size !== ids.length) {
+    return c.json({ error: 'Některá z partií nepatří k této databázi' }, 400);
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+
+  const headerSql = `UPDATE games SET
+     event = ?, site = ?, date = ?, round = ?, board = ?,
+     white = ?, black = ?,
+     white_elo = ?, black_elo = ?,
+     white_team = ?, black_team = ?,
+     white_fide_id = ?, black_fide_id = ?,
+     white_cz_id = ?, black_cz_id = ?,
+     result = ?, eco = ?,
+     updated_at = ?
+   WHERE id = ? AND database_id = ?`;
+
+  const movesSql = `UPDATE games SET
+     event = ?, site = ?, date = ?, round = ?, board = ?,
+     white = ?, black = ?,
+     white_elo = ?, black_elo = ?,
+     white_team = ?, black_team = ?,
+     white_fide_id = ?, black_fide_id = ?,
+     white_cz_id = ?, black_cz_id = ?,
+     result = ?, eco = ?,
+     moves_pgn = ?, ply_count = ?,
+     updated_at = ?
+   WHERE id = ? AND database_id = ?`;
+
+  const headerStmt = c.env.DB.prepare(headerSql);
+  const movesStmt = c.env.DB.prepare(movesSql);
+
+  const batch = body.updates.map((u) => {
+    const h = u.headers;
+    const headerBinds = [
+      h.Event || null,
+      h.Site || null,
+      h.Date || null,
+      h.Round || null,
+      h.Board || null,
+      h.White || null,
+      h.Black || null,
+      h.WhiteElo ? parseInt(h.WhiteElo) || null : null,
+      h.BlackElo ? parseInt(h.BlackElo) || null : null,
+      h.WhiteTeam || null,
+      h.BlackTeam || null,
+      h.WhiteFideId || null,
+      h.BlackFideId || null,
+      h.WhiteCzId || null,
+      h.BlackCzId || null,
+      h.Result || null,
+      h.ECO || null,
+    ];
+    if (typeof u.movesPgn === 'string') {
+      return movesStmt.bind(
+        ...headerBinds,
+        u.movesPgn,
+        countPlies(u.movesPgn),
+        now,
+        u.gameId,
+        dbId
+      );
+    }
+    return headerStmt.bind(...headerBinds, now, u.gameId, dbId);
+  });
+
+  batch.push(c.env.DB.prepare('UPDATE databases SET updated_at = ? WHERE id = ?').bind(now, dbId));
+
+  await c.env.DB.batch(batch);
+
+  return c.json({ updated: body.updates.length });
 });
 
 // Delete game

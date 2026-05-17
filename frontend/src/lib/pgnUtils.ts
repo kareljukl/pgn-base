@@ -57,6 +57,20 @@ export function stripMovetext(movetext: string): string {
   return clean.join(' ');
 }
 
+export function hasAnyTopLevelVariation(movetext: string): boolean {
+  const stripped = movetext.replace(/\{[^}]*\}/g, ' ');
+  let depth = 0;
+  for (const ch of stripped) {
+    if (ch === '(') {
+      if (depth === 0) return true;
+      depth++;
+    } else if (ch === ')') {
+      if (depth > 0) depth--;
+    }
+  }
+  return false;
+}
+
 export type ArtifactCounts = {
   comments: number;
   variations: number;

@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, API_ORIGIN } from '../lib/api';
 import { ImportDialog } from '../components/ImportDialog';
+import { BulkActionDialog } from '../components/DatabaseDetail/BulkActionDialog';
+import { removeDiacritics, stripMovetext, hasAnyTopLevelVariation } from '../lib/pgnUtils';
+import { headersFromGameRow, toApiHeaders, type EditorHeaders } from '../lib/editorPgn';
 
 type DatabaseInfo = {
   id: string;
@@ -13,14 +16,24 @@ type DatabaseInfo = {
 
 type Game = {
   id: string;
+  event: string | null;
+  site: string | null;
+  date: string | null;
+  round: string | null;
+  board: string | null;
   white: string | null;
   black: string | null;
   white_elo: number | null;
   black_elo: number | null;
+  white_team: string | null;
+  black_team: string | null;
+  white_fide_id: string | null;
+  black_fide_id: string | null;
+  white_cz_id: string | null;
+  black_cz_id: string | null;
   result: string | null;
-  date: string | null;
-  event: string | null;
-  round: string | null;
+  eco: string | null;
+  moves_pgn?: string;
 };
 
 type GamesResponse = {
@@ -28,6 +41,19 @@ type GamesResponse = {
   total: number;
   page: number;
   limit: number;
+};
+
+type BulkUpdateItem = {
+  gameId: string;
+  headers: Record<string, string>;
+  movesPgn?: string;
+};
+
+type BulkDialogState = {
+  title: string;
+  message: string;
+  totalCount: number;
+  updates: BulkUpdateItem[];
 };
 
 export function DatabaseDetail() {
@@ -40,6 +66,13 @@ export function DatabaseDetail() {
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState('date');
   const [order, setOrder] = useState<'asc' | 'desc'>('desc');
+  const [refusedGameIds, setRefusedGameIds] = useState<Set<string>>(new Set());
+  const [bulkDialog, setBulkDialog] = useState<BulkDialogState | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  useEffect(() => {
+    setRefusedGameIds(new Set());
+  }, [debouncedSearch, sort, order]);
 
   const { data: dbList } = useQuery({
     queryKey: ['databases'],
@@ -73,6 +106,114 @@ export function DatabaseDetail() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['games', id] }),
   });
 
+  const bulkMutation = useMutation({
+    mutationFn: (updates: BulkUpdateItem[]) =>
+      api.post<{ updated: number }>(`/databases/${id}/games/bulk-update`, { updates }),
+    onSuccess: (resp) => {
+      setBulkDialog(null);
+      setRefusedGameIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ['games', id] });
+      alert(`Upraveno ${resp.updated} partií.`);
+    },
+    onError: (err: Error) => {
+      alert(`Chyba: ${err.message ?? 'neznámá chyba'}`);
+    },
+  });
+
+  const fetchAllFilteredGames = async (includeMoves: boolean): Promise<{ games: Game[]; total: number }> => {
+    const params = new URLSearchParams({ limit: '1000', sort, order });
+    if (debouncedSearch) params.set('q', debouncedSearch);
+    if (includeMoves) params.set('includeMoves', 'true');
+    return api.get<GamesResponse>(`/databases/${id}/games?${params}`);
+  };
+
+  const handleBulkDiacritics = async () => {
+    if (bulkBusy) return;
+    setBulkBusy(true);
+    try {
+      const { games: allGames, total } = await fetchAllFilteredGames(false);
+      if (total > 1000) {
+        alert('Filtr obsahuje více než 1000 partií. Zúžte filtr.');
+        return;
+      }
+      const fields: (keyof EditorHeaders)[] = ['Event', 'Site', 'White', 'Black', 'WhiteTeam', 'BlackTeam'];
+      const updates: BulkUpdateItem[] = [];
+      for (const g of allGames) {
+        const headers = headersFromGameRow(g);
+        const next = { ...headers };
+        let dirty = false;
+        for (const f of fields) {
+          const stripped = removeDiacritics(headers[f]);
+          if (stripped !== headers[f]) {
+            next[f] = stripped;
+            dirty = true;
+          }
+        }
+        if (dirty) updates.push({ gameId: g.id, headers: toApiHeaders(next) });
+      }
+      if (updates.length === 0) {
+        alert('Žádná partie nepotřebuje úpravu diakritiky.');
+        return;
+      }
+      setBulkDialog({
+        title: 'Odstranění diakritiky',
+        message: `Bude upraveno ${updates.length} z ${total} partií ve filtru.`,
+        totalCount: total,
+        updates,
+      });
+    } catch (err) {
+      alert(`Chyba při načítání partií: ${(err as Error).message ?? 'neznámá chyba'}`);
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const handleBulkCleanup = async () => {
+    if (bulkBusy) return;
+    setBulkBusy(true);
+    try {
+      const { games: allGames, total } = await fetchAllFilteredGames(true);
+      if (total > 1000) {
+        alert('Filtr obsahuje více než 1000 partií. Zúžte filtr.');
+        return;
+      }
+      const problematic: string[] = [];
+      for (const g of allGames) {
+        if (hasAnyTopLevelVariation(g.moves_pgn ?? '')) problematic.push(g.id);
+      }
+      if (problematic.length > 0) {
+        setRefusedGameIds(new Set(problematic));
+        alert(
+          `${problematic.length} ${problematic.length === 1 ? 'partie obsahuje' : 'partií obsahuje'} varianty a nelze hromadně vyčistit (podbarveno). Vyčistěte je ručně v náhledu partie nebo zúžte filtr.`
+        );
+        return;
+      }
+      const updates: BulkUpdateItem[] = [];
+      for (const g of allGames) {
+        const raw = g.moves_pgn ?? '';
+        const cleaned = stripMovetext(raw);
+        if (cleaned !== raw.trim()) {
+          const headers = headersFromGameRow(g);
+          updates.push({ gameId: g.id, headers: toApiHeaders(headers), movesPgn: cleaned });
+        }
+      }
+      if (updates.length === 0) {
+        alert('Všechny partie ve filtru jsou již čisté.');
+        return;
+      }
+      setBulkDialog({
+        title: 'Vyčisti PGN',
+        message: `Bude upraveno ${updates.length} z ${total} partií. Odstraní se komentáře, NAG, glyfy a escape řádky.`,
+        totalCount: total,
+        updates,
+      });
+    } catch (err) {
+      alert(`Chyba při načítání partií: ${(err as Error).message ?? 'neznámá chyba'}`);
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   const handleSort = (column: string) => {
     if (sort === column) {
       setOrder(order === 'asc' ? 'desc' : 'asc');
@@ -104,6 +245,22 @@ export function DatabaseDetail() {
               </a>
             </>
           )}
+          <button
+            onClick={handleBulkDiacritics}
+            disabled={bulkBusy || bulkMutation.isPending || total === 0}
+            title="Odstraní diakritiku z Event, Site, jmen hráčů a názvů týmů ve všech vyfiltrovaných partiích"
+            style={smallBtnStyle}
+          >
+            Odstranění diakritiky
+          </button>
+          <button
+            onClick={handleBulkCleanup}
+            disabled={bulkBusy || bulkMutation.isPending || total === 0}
+            title="Vyčistí PGN ve všech vyfiltrovaných partiích bez variant"
+            style={smallBtnStyle}
+          >
+            Vyčisti PGN
+          </button>
           <button onClick={() => navigate(`/db/${id}/game/new`)} style={btnStyle}>
             + Nová partie
           </button>
@@ -112,6 +269,18 @@ export function DatabaseDetail() {
           </button>
         </div>
       </div>
+
+      {bulkDialog && (
+        <BulkActionDialog
+          title={bulkDialog.title}
+          message={bulkDialog.message}
+          updateCount={bulkDialog.updates.length}
+          totalCount={bulkDialog.totalCount}
+          isPending={bulkMutation.isPending}
+          onConfirm={() => bulkMutation.mutate(bulkDialog.updates)}
+          onCancel={() => setBulkDialog(null)}
+        />
+      )}
 
       {showImport && (
         <ImportDialog
@@ -159,7 +328,11 @@ export function DatabaseDetail() {
               {games.map((game) => (
                 <tr
                   key={game.id}
-                  style={{ borderBottom: '1px solid #eee', cursor: 'pointer' }}
+                  style={{
+                    borderBottom: '1px solid #eee',
+                    cursor: 'pointer',
+                    background: refusedGameIds.has(game.id) ? '#fee2e2' : undefined,
+                  }}
                   onClick={() => navigate(`/db/${id}/game/${game.id}`, {
                     state: {
                       filter: debouncedSearch,
