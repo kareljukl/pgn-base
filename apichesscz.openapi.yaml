@@ -1,0 +1,853 @@
+openapi: 3.0.3
+info:
+  title: api.chess.cz REST API
+  description: |
+    Veřejné REST API Šachového svazu ČR (https://appchess.cz/api/index.html).
+    Bez autentizace. Kontakt: Daniel Nový <daniel@novy.email>.
+
+    ## Identifikátory — pozor na nekonzistenci
+    - **č. oddílu (clubCode, string „12003")** — používá se v URL endpointů
+      jako `:clubId` *a* v odpovědích jako pole `clubId` (string).
+      V `GET /clubs/all` se ale tatáž hodnota vrací v poli `clubCode`!
+      Pole `clubId` v `/clubs/all` je naopak jiné interní integer ID
+      (např. `40103`), které se v žádném dalším endpointu nepoužívá.
+    - **č. LOK (czeId, integer)** — používá se v URL jako `:lokId`
+      a v odpovědích jako `czeId`.
+    - **č. FIDE (fideId, integer)** — používá se v URL jako `:fideId`
+      a v odpovědích jako `fideId`.
+
+    ## Tvar odpovědi (single vs array)
+    Řada endpointů vrací **buď jednotlivý objekt, nebo pole objektů**
+    podle počtu výsledků. Schémata to vyjadřují přes `oneOf`. Klienti
+    by měli typ kontrolovat pomocí `Array.isArray()` nebo wrapnout
+    jednoduchý objekt do pole.
+
+    ## Rate-limit
+    Server agresivně blokuje IP po pár desítkách requestů v krátké době
+    (potvrzeno 2026-05-17 — block na hodiny po 18 sekvenčních GETech bez pauzy).
+    Doporučení: max ~3 requesty/min, lokální cache.
+
+    ## Endpointy mimo rozsah
+    `/events` a `/events/upcoming` jsou v dokumentaci ŠSČR, ale tato
+    specifikace je nepopisuje (nepoužívají se v PGN Base).
+  version: "1.1.0"
+  contact:
+    name: Daniel Nový
+    email: daniel@novy.email
+
+servers:
+  - url: https://api.chess.cz/api
+    description: Produkce
+
+security: []  # API je veřejné, bez autentizace
+
+tags:
+  - name: Clubs
+    description: Šachové oddíly
+  - name: Members
+    description: Hráči (členové ŠSČR / FIDE)
+  - name: Competitions
+    description: Soutěže družstev
+
+paths:
+  # ──────────────────────────────── CLUBS ────────────────────────────────
+  /clubs/all:
+    get:
+      tags: [Clubs]
+      summary: Seznam všech oddílů
+      description: |
+        Vrací všech ~493 registrovaných oddílů.
+
+        **Pozor:** `clubCode` z této odpovědi je „č. oddílu" — používej
+        ho dál jako `:clubId` v ostatních endpointech. Pole `clubId` zde
+        je jiné interní integer ID, jinde nepoužívané.
+      operationId: listClubs
+      responses:
+        "200":
+          description: Pole všech oddílů
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ClubListEntry" }
+
+  /clubs/{clubId}/details:
+    get:
+      tags: [Clubs]
+      summary: Detail oddílu
+      operationId: getClubDetails
+      parameters:
+        - $ref: "#/components/parameters/ClubIdParam"
+      responses:
+        "200":
+          description: Detail oddílu (vrací se zabalený v poli s 1 prvkem)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ClubDetail" }
+                example:
+                  - clubId: "12003"
+                    clubName: "TJ Jawa Brodce"
+                    clubWeb: "http://www.sachytynec.cz"
+                    clubEmail: "karel.jukl@gmail.com"
+                    managerName: "Jukl Karel"
+                    managerTitle: "Ing."
+                    managerPhone: "602 123 971"
+                    managerEmail: "karel.jukl@gmail.com"
+                    totalMembers: 25
+                    activeMembers: 18
+
+  /clubs/{clubId}/members:
+    get:
+      tags: [Clubs]
+      summary: Členové oddílu
+      operationId: getClubMembers
+      parameters:
+        - $ref: "#/components/parameters/ClubIdParam"
+      responses:
+        "200":
+          description: Pole členů oddílu
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ClubMember"
+                  - type: array
+                    items: { $ref: "#/components/schemas/ClubMember" }
+
+  /clubs/{clubId}/members/csv:
+    get:
+      tags: [Clubs]
+      summary: Členové oddílu jako CSV
+      operationId: getClubMembersCsv
+      parameters:
+        - $ref: "#/components/parameters/ClubIdParam"
+      responses:
+        "200":
+          description: CSV soubor členů oddílu
+          content:
+            text/csv:
+              schema: { type: string, format: binary }
+
+  # ─────────────────────────────── MEMBERS ───────────────────────────────
+  /members/name:
+    get:
+      tags: [Members]
+      summary: Vyhledat hráče podle jména (max. 10 výsledků)
+      operationId: searchMembersByName
+      parameters:
+        - in: query
+          name: search
+          required: true
+          description: Část jména (např. „Novák Radomír" nebo jen „Novak").
+          schema: { type: string }
+          example: "Antoš Bořivoj"
+      responses:
+        "200":
+          description: Nalezený hráč (jeden objekt nebo pole, max. 10)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/Member"
+                  - type: array
+                    maxItems: 10
+                    items: { $ref: "#/components/schemas/Member" }
+
+  /members/{lokId}/cze:
+    get:
+      tags: [Members]
+      summary: Detail hráče podle č. LOK (ČŠS) ID
+      operationId: getMemberByCzeId
+      parameters:
+        - $ref: "#/components/parameters/LokIdParam"
+      responses:
+        "200":
+          description: Detail hráče
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Member" }
+
+  /members/{fideId}/fide:
+    get:
+      tags: [Members]
+      summary: Detail hráče podle č. FIDE ID
+      operationId: getMemberByFideId
+      parameters:
+        - $ref: "#/components/parameters/FideIdParam"
+      responses:
+        "200":
+          description: Detail hráče
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Member" }
+
+  /members/{lokId}/competitions:
+    get:
+      tags: [Members]
+      summary: Historie soutěží družstev hráče
+      operationId: getMemberCompetitions
+      parameters:
+        - $ref: "#/components/parameters/LokIdParam"
+      responses:
+        "200":
+          description: Pole soutěží (nebo jednotlivá soutěž, když je jen jedna)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/MemberCompetition"
+                  - type: array
+                    items: { $ref: "#/components/schemas/MemberCompetition" }
+
+  /members/{lokId}/matches/upcoming:
+    get:
+      tags: [Members]
+      summary: Všechny nadcházející zápasy hráče
+      operationId: getMemberUpcomingMatchesAll
+      parameters:
+        - $ref: "#/components/parameters/LokIdParam"
+      responses:
+        "200":
+          description: Pole nadcházejících zápasů (může být prázdné)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/UpcomingMatch"
+                  - type: array
+                    items: { $ref: "#/components/schemas/UpcomingMatch" }
+
+  /members/{lokId}/matches/upcoming/{count}:
+    get:
+      tags: [Members]
+      summary: Posledních N nadcházejících zápasů hráče
+      operationId: getMemberUpcomingMatches
+      parameters:
+        - $ref: "#/components/parameters/LokIdParam"
+        - $ref: "#/components/parameters/CountParam"
+      responses:
+        "200":
+          description: Pole nadcházejících zápasů (max. N)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/UpcomingMatch"
+                  - type: array
+                    items: { $ref: "#/components/schemas/UpcomingMatch" }
+
+  /members/{lokId}/games:
+    get:
+      tags: [Members]
+      summary: Všechny hráčovy partie v databázi
+      operationId: getMemberGamesAll
+      parameters:
+        - $ref: "#/components/parameters/LokIdParam"
+      responses:
+        "200":
+          description: Pole partií
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/MemberGame"
+                  - type: array
+                    items: { $ref: "#/components/schemas/MemberGame" }
+
+  /members/{lokId}/games/{count}:
+    get:
+      tags: [Members]
+      summary: Posledních N hráčových partií
+      operationId: getMemberGames
+      parameters:
+        - $ref: "#/components/parameters/LokIdParam"
+        - $ref: "#/components/parameters/CountParam"
+      responses:
+        "200":
+          description: Pole partií (max. N)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/MemberGame"
+                  - type: array
+                    items: { $ref: "#/components/schemas/MemberGame" }
+
+  # ───────────────────────────── COMPETITIONS ─────────────────────────────
+  /competitions:
+    get:
+      tags: [Competitions]
+      summary: Aktuální / poslední sezona soutěží družstev
+      operationId: listCompetitionsCurrent
+      responses:
+        "200":
+          description: Soutěže seskupené po regionech
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CompetitionsByRegion" }
+
+  /competitions/{year}:
+    get:
+      tags: [Competitions]
+      summary: Soutěže družstev pro konkrétní sezonu
+      operationId: listCompetitionsByYear
+      parameters:
+        - in: path
+          name: year
+          required: true
+          description: Rok zahájení sezony (např. `2025` pro sezonu 2025/2026).
+          schema: { type: integer, example: 2025 }
+      responses:
+        "200":
+          description: Soutěže seskupené po regionech
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CompetitionsByRegion" }
+
+  /competitions/{compId}/details:
+    get:
+      tags: [Competitions]
+      summary: Detail soutěže
+      operationId: getCompetitionDetails
+      parameters:
+        - $ref: "#/components/parameters/CompIdParam"
+      responses:
+        "200":
+          description: Detail soutěže
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CompetitionDetail" }
+
+  /competitions/{compId}/table:
+    get:
+      tags: [Competitions]
+      summary: Tabulka soutěže
+      operationId: getCompetitionTable
+      parameters:
+        - $ref: "#/components/parameters/CompIdParam"
+      responses:
+        "200":
+          description: Pořadí týmů
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/TableRow"
+                  - type: array
+                    items: { $ref: "#/components/schemas/TableRow" }
+
+  /competitions/{compId}/crosstable:
+    get:
+      tags: [Competitions]
+      summary: Křížová tabulka (vzájemné výsledky)
+      operationId: getCompetitionCrosstable
+      parameters:
+        - $ref: "#/components/parameters/CompIdParam"
+      responses:
+        "200":
+          description: Křížová tabulka
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/CrosstableRow"
+                  - type: array
+                    items: { $ref: "#/components/schemas/CrosstableRow" }
+
+  /competitions/{compId}/schedule:
+    get:
+      tags: [Competitions]
+      summary: Kompletní rozpis soutěže
+      operationId: getCompetitionSchedule
+      parameters:
+        - $ref: "#/components/parameters/CompIdParam"
+      responses:
+        "200":
+          description: Rozpis všech kol
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/RoundSchedule"
+                  - type: array
+                    items: { $ref: "#/components/schemas/RoundSchedule" }
+
+  /competitions/{compId}/files:
+    get:
+      tags: [Competitions]
+      summary: Přílohy soutěže
+      operationId: getCompetitionFiles
+      parameters:
+        - $ref: "#/components/parameters/CompIdParam"
+      responses:
+        "200":
+          description: Seznam příloh (přesné schéma neověřeno, často prázdné)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    additionalProperties: true
+                  - type: array
+                    items: { type: object, additionalProperties: true }
+
+  /competitions/{compId}/history:
+    get:
+      tags: [Competitions]
+      summary: Všechny ročníky této soutěže
+      operationId: getCompetitionHistory
+      parameters:
+        - $ref: "#/components/parameters/CompIdParam"
+      responses:
+        "200":
+          description: Ročníky soutěže (přesné schéma neověřeno)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    additionalProperties: true
+                  - type: array
+                    items: { type: object, additionalProperties: true }
+
+  /competitions/{compId}/round/{round}/schedule:
+    get:
+      tags: [Competitions]
+      summary: Losování konkrétního kola
+      operationId: getCompetitionRoundSchedule
+      parameters:
+        - $ref: "#/components/parameters/CompIdParam"
+        - $ref: "#/components/parameters/RoundParam"
+      responses:
+        "200":
+          description: Losování kola (jedno kolo = jeden objekt)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RoundSchedule" }
+
+  /competitions/{compId}/round/{round}/matches:
+    get:
+      tags: [Competitions]
+      summary: Výsledky kola včetně partií
+      operationId: getCompetitionRoundMatches
+      parameters:
+        - $ref: "#/components/parameters/CompIdParam"
+        - $ref: "#/components/parameters/RoundParam"
+      responses:
+        "200":
+          description: Pole zápasů kola s výsledky na šachovnicích
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/MatchResult"
+                  - type: array
+                    items: { $ref: "#/components/schemas/MatchResult" }
+
+  /competitions/{compId}/team/{teamId}/roster:
+    get:
+      tags: [Competitions]
+      summary: Soupiska týmu s individuálními výsledky
+      operationId: getTeamRoster
+      parameters:
+        - $ref: "#/components/parameters/CompIdParam"
+        - $ref: "#/components/parameters/TeamIdParam"
+      responses:
+        "200":
+          description: Soupiska s výsledky podle kol
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/RosterEntry"
+                  - type: array
+                    items: { $ref: "#/components/schemas/RosterEntry" }
+
+  /competitions/{compId}/team/{teamId}/schedule:
+    get:
+      tags: [Competitions]
+      summary: Rozpis zápasů týmu
+      operationId: getTeamSchedule
+      parameters:
+        - $ref: "#/components/parameters/CompIdParam"
+        - $ref: "#/components/parameters/TeamIdParam"
+      responses:
+        "200":
+          description: Pole kol s daty a soupeři
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/TeamScheduleEntry"
+                  - type: array
+                    items: { $ref: "#/components/schemas/TeamScheduleEntry" }
+
+  /competitions/{compId}/team/{teamId}/matches:
+    get:
+      tags: [Competitions]
+      summary: Zápasy týmu s výsledky na šachovnicích
+      operationId: getTeamMatches
+      parameters:
+        - $ref: "#/components/parameters/CompIdParam"
+        - $ref: "#/components/parameters/TeamIdParam"
+      responses:
+        "200":
+          description: Pole zápasů týmu s detailem každé šachovnice
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/MatchResult"
+                  - type: array
+                    items: { $ref: "#/components/schemas/MatchResult" }
+
+  /competitions/{compId}/team/{teamId}/contacts:
+    get:
+      tags: [Competitions]
+      summary: Kontakty týmu
+      operationId: getTeamContacts
+      parameters:
+        - $ref: "#/components/parameters/CompIdParam"
+        - $ref: "#/components/parameters/TeamIdParam"
+      responses:
+        "200":
+          description: Kontakty na kapitána, zástupce a hrací místo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TeamContacts" }
+
+components:
+  parameters:
+    ClubIdParam:
+      in: path
+      name: clubId
+      required: true
+      description: |
+        Číslo oddílu = hodnota `clubCode` z `/clubs/all`
+        (a zároveň hodnota `clubId` v odpovědích z `/clubs/:clubId/details`
+        a `/members/:lokId/cze`). String, typicky pětimístné číslo.
+      schema: { type: string, example: "12003" }
+    LokIdParam:
+      in: path
+      name: lokId
+      required: true
+      description: ČŠS (LOK) ID hráče = pole `czeId` v Member odpovědích.
+      schema: { type: integer, example: 708 }
+    FideIdParam:
+      in: path
+      name: fideId
+      required: true
+      description: FIDE ID hráče = pole `fideId` v Member odpovědích.
+      schema: { type: integer, example: 327298 }
+    CompIdParam:
+      in: path
+      name: compId
+      required: true
+      description: ID soutěže (`compId` z `/competitions`).
+      schema: { type: integer, example: 3242 }
+    TeamIdParam:
+      in: path
+      name: teamId
+      required: true
+      description: ID týmu v rámci soutěže (`teamId` z tabulky / rozpisu).
+      schema: { type: integer }
+    RoundParam:
+      in: path
+      name: round
+      required: true
+      description: Číslo kola.
+      schema: { type: integer, example: 1 }
+    CountParam:
+      in: path
+      name: count
+      required: true
+      description: Maximální počet vrácených záznamů.
+      schema: { type: integer, minimum: 1, example: 10 }
+
+  schemas:
+    # ────────────────────────────── Clubs ───────────────────────────────
+    ClubListEntry:
+      type: object
+      description: |
+        Záznam ve výpisu `/clubs/all`.
+        **Pozor:** `clubCode` je „č. oddílu" — používá se dál v URL.
+        `clubId` je interní integer, jinde nepoužívané.
+      properties:
+        clubId:    { type: integer, example: 40103, description: "Interní DB ID, jinde nepoužívané." }
+        clubCode:  { type: string,  example: "17003", description: "Č. oddílu — použij dál jako :clubId." }
+        clubName:  { type: string,  example: "1. Novoborský ŠK" }
+      required: [clubId, clubCode, clubName]
+
+    ClubDetail:
+      type: object
+      properties:
+        clubId:        { type: string,  example: "12003", description: "Č. oddílu (shodné s parametrem URL)." }
+        clubName:      { type: string,  example: "TJ Jawa Brodce" }
+        clubWeb:       { type: string,  nullable: true, example: "http://www.sachytynec.cz" }
+        clubEmail:     { type: string,  nullable: true }
+        managerName:   { type: string,  nullable: true }
+        managerTitle:  { type: string,  nullable: true }
+        managerPhone:  { type: string,  nullable: true }
+        managerEmail:  { type: string,  nullable: true }
+        totalMembers:  { type: integer, example: 25 }
+        activeMembers: { type: integer, example: 18 }
+      required: [clubId, clubName]
+
+    ClubMember:
+      type: object
+      description: Záznam člena v kontextu konkrétního oddílu (bez clubName/clubId).
+      properties:
+        fullName:         { type: string, example: "Antoš Bořivoj " }
+        birthYear:        { type: integer, nullable: true, example: 1962 }
+        playerClass:      { type: string,  nullable: true, example: "KM" }
+        czeId:            { type: integer, example: 708 }
+        czeStdElo:        { type: integer, example: 2028 }
+        czeRapidElo:      { type: integer, example: 2128 }
+        fideId:           { type: integer, example: 327298 }
+        fideStdElo:       { type: integer, example: 2058 }
+        fideRapidElo:     { type: integer, example: 0 }
+        fideBlitzElo:     { type: integer, example: 0 }
+        registration:     { type: string,  example: "Aktivní" }
+        lastUpdate:       { type: string,  example: "20.01.2026", description: "Formát DD.MM.YYYY." }
+        arbiterClass:     { type: string,  example: "-" }
+        arbiterValidYear: { type: integer, nullable: true }
+        trainerClass:     { type: string,  example: "-" }
+        trainerValidYear: { type: integer, nullable: true }
+        feeYear:          { type: integer, example: 2026 }
+
+    # ────────────────────────────── Members ─────────────────────────────
+    Member:
+      type: object
+      description: Plný záznam hráče (vč. pohlaví a oddílu).
+      properties:
+        fullName:         { type: string, example: "Novák Radomír " }
+        gender:           { type: string, enum: [M, F], example: M }
+        birthYear:        { type: integer, example: 1962 }
+        playerClass:      { type: string, nullable: true, example: "KM", description: "Hráčská třída (KM, I, II, …)." }
+        czeId:            { type: integer, example: 708, description: "Č. LOK." }
+        czeStdElo:        { type: integer, example: 2028 }
+        czeRapidElo:      { type: integer, example: 2128 }
+        fideId:           { type: integer, example: 327298 }
+        fideStdElo:       { type: integer, example: 2058 }
+        fideRapidElo:     { type: integer, example: 0 }
+        fideBlitzElo:     { type: integer, example: 0 }
+        registration:     { type: string, example: "Aktivní" }
+        lastUpdate:       { type: string, example: "25.02.2026", description: "Formát DD.MM.YYYY." }
+        arbiterClass:     { type: string, example: "-" }
+        arbiterValidYear: { type: integer, nullable: true }
+        trainerClass:     { type: string, example: "-" }
+        trainerValidYear: { type: integer, nullable: true }
+        feeYear:          { type: integer, example: 2026 }
+        clubName:         { type: string, example: "ŠŠPM Lipky HK" }
+        clubId:           { type: string, example: "18013", description: "Č. oddílu (string)." }
+
+    MemberCompetition:
+      type: object
+      properties:
+        competitionId:   { type: integer }
+        competitionName: { type: string,  example: "Krajský přebor SŠS" }
+        competitionYear: { type: integer, example: 2024 }
+
+    UpcomingMatch:
+      type: object
+      description: |
+        Schéma neověřeno (v testovaných hráčích žádné nadcházející zápasy nebyly).
+        Pravděpodobně podobné `TeamScheduleEntry` s identifikací zápasu.
+      additionalProperties: true
+
+    MemberGame:
+      type: object
+      description: Záznam jedné odehrané partie v týmové soutěži.
+      properties:
+        pieceColor:           { type: string, enum: [W, B], description: "Hráč hrál bílými (W) / černými (B)." }
+        whitePlayer:          { type: string }
+        whitePlayerClass:     { type: string, nullable: true }
+        whiteCzeId:           { type: integer }
+        blackPlayer:          { type: string }
+        blackPlayerClass:     { type: string, nullable: true }
+        blackCzeId:           { type: integer }
+        whiteScore:           { type: number, description: "0, 0.5, 1." }
+        blackScore:           { type: number }
+        gameForfeited:        { type: integer, description: "1 = kontumace, 0 = sehráno." }
+        whiteFideElo:         { type: integer }
+        whiteCzeElo:          { type: integer }
+        blackFideElo:         { type: integer }
+        blackCzeElo:          { type: integer }
+        whiteTeamName:        { type: string }
+        whiteTeamId:          { type: integer }
+        blackTeamName:        { type: string }
+        blackTeamId:          { type: integer }
+        matchDate:            { type: string, example: "2026-03-29 00:00:00" }
+        matchDateText:        { type: string, example: "29.03.2026" }
+        matchId:              { type: integer }
+        competitionName:      { type: string, example: "Krajská soutěž 'A'" }
+        competitionId:        { type: integer }
+        competitionYear:      { type: integer }
+        competitionRound:     { type: integer }
+        competitionCzeRated:  { type: integer, description: "1 = započítává se na ČŠS ELO." }
+        competitionFideRated: { type: integer, description: "1 = započítává se na FIDE ELO." }
+
+    # ─────────────────────────── Competitions ───────────────────────────
+    CompetitionSummary:
+      type: object
+      properties:
+        compName:         { type: string,  example: "šachy.cz Extraliga" }
+        compId:           { type: integer, example: 3242 }
+        compLevel:        { type: integer, example: 0, description: "0 = nejvyšší úroveň." }
+        compSeason:       { type: integer, example: 2025 }
+        compYoungOrAdult: { type: string,  enum: [A, Y], example: A, description: "A = dospělí, Y = mládež." }
+      required: [compName, compId, compSeason]
+
+    CompetitionRegion:
+      type: object
+      properties:
+        regionCode:   { type: string,  example: "ŠSČR" }
+        regionName:   { type: string,  example: "Šachový svaz České republiky" }
+        competitions:
+          type: array
+          items: { $ref: "#/components/schemas/CompetitionSummary" }
+
+    CompetitionsByRegion:
+      type: object
+      description: |
+        Mapa, kde klíč je číselný kód kraje jako string (např. `"11"`, `"98"`),
+        a hodnota je objekt s `regionCode`, `regionName` a polem soutěží.
+      additionalProperties: { $ref: "#/components/schemas/CompetitionRegion" }
+      example:
+        "98":
+          regionCode: "ŠSČR"
+          regionName: "Šachový svaz České republiky"
+          competitions:
+            - { compName: "šachy.cz Extraliga", compId: 3242, compLevel: 0, compSeason: 2025, compYoungOrAdult: "A" }
+
+    CompetitionDetail:
+      type: object
+      properties:
+        compName:         { type: string,  example: "Krajská soutěž 'A'" }
+        compId:           { type: integer }
+        compLevel:        { type: integer }
+        compWww:          { type: string,  nullable: true }
+        regionId:         { type: integer }
+        regionName:       { type: string,  example: "Středočeský šachový svaz (SŠS)" }
+        compManagerName:  { type: string,  nullable: true }
+        compManagerEmail: { type: string,  nullable: true }
+        compManagerPhone: { type: string,  nullable: true }
+
+    TableRow:
+      type: object
+      properties:
+        teamRank:      { type: string, example: "1" }
+        teamName:      { type: string, example: "Klokani z Kralup" }
+        teamId:        { type: integer }
+        matchesPlayed: { type: integer }
+        matchWins:     { type: integer }
+        matchDraws:    { type: integer }
+        matchLosses:   { type: integer }
+        points:        { type: integer }
+        score:         { type: integer, description: "Skóre v partiích (součet bodů)." }
+        wonGames:      { type: integer, description: "Pomocný ukazatel pro pořadí." }
+
+    CrosstableRow:
+      type: object
+      properties:
+        teamRank:    { type: string }
+        teamId:      { type: integer }
+        teamName:    { type: string }
+        teamScores:
+          type: array
+          description: |
+            Skóre vůči ostatním týmům (index odpovídá pořadí v tabulce).
+            Prázdný string = ten tým ještě nehrál / sebehrál.
+          items: { type: string, example: "" }
+
+    RoundSchedule:
+      type: object
+      properties:
+        roundNr:      { type: integer }
+        roundDate:    { type: string, example: "14.12.2025" }
+        roundMatches:
+          type: array
+          items: { $ref: "#/components/schemas/MatchPairing" }
+
+    MatchPairing:
+      type: object
+      properties:
+        homeTeamId:    { type: integer }
+        homeTeamName:  { type: string }
+        homeTeamScore: { type: number, nullable: true, description: "null pokud zápas ještě neproběhl." }
+        awayTeamId:    { type: integer }
+        awayTeamName:  { type: string }
+        awayTeamScore: { type: number, nullable: true }
+
+    MatchResult:
+      type: object
+      description: Zápas (utkání) včetně výsledků na všech šachovnicích.
+      properties:
+        roundNr:       { type: integer }
+        homeTeamId:    { type: integer }
+        homeTeamName:  { type: string }
+        homeTeamScore: { type: number }
+        awayTeamId:    { type: integer }
+        awayTeamName:  { type: string }
+        awayTeamScore: { type: number }
+        matchGames:
+          type: array
+          items: { $ref: "#/components/schemas/BoardGame" }
+
+    BoardGame:
+      type: object
+      description: Partie na konkrétní šachovnici.
+      properties:
+        homePlayerId:     { type: integer }
+        homePlayerClass:  { type: string, nullable: true, example: "M" }
+        homePlayerName:   { type: string }
+        homePlayerFlags:  { type: string, example: " V Z", description: "Příznaky (V = vedoucí, H = host, Z = zařazen, …)." }
+        homePlayerRating: { type: integer }
+        homePlayerResult: { type: number, description: "0, 0.5, 1." }
+        awayPlayerId:     { type: integer }
+        awayPlayerClass:  { type: string, nullable: true }
+        awayPlayerName:   { type: string }
+        awayPlayerFlags:  { type: string }
+        awayPlayerRating: { type: integer }
+        awayPlayerResult: { type: number }
+        gameForfeited:    { type: integer, description: "1 = kontumace, 0 = sehráno." }
+
+    RosterEntry:
+      type: object
+      properties:
+        rosterPosition: { type: integer, description: "Pozice na soupisce." }
+        playerId:       { type: integer }
+        playerName:     { type: string }
+        playerClass:    { type: string, nullable: true }
+        playerCzeElo:   { type: integer }
+        playerFideElo:  { type: integer }
+        playerFlags:    { type: string, example: " H Z" }
+        playerResults:
+          type: array
+          description: Pole výsledků po kolech (null = nehrál).
+          items:
+            type: number
+            nullable: true
+
+    TeamScheduleEntry:
+      type: object
+      properties:
+        roundNr:       { type: integer }
+        roundDate:     { type: string, example: "12.10.2025" }
+        homeTeamId:    { type: integer }
+        homeTeamName:  { type: string }
+        homeTeamScore: { type: number, nullable: true }
+        awayTeamId:    { type: integer }
+        awayTeamName:  { type: string }
+        awayTeamScore: { type: number, nullable: true }
+
+    TeamContacts:
+      type: object
+      properties:
+        teamName:       { type: string }
+        teamId:         { type: integer }
+        captainDetails: { type: object, nullable: true, additionalProperties: true }
+        deputyDetails:  { type: object, nullable: true, additionalProperties: true }
+        venueDetails:   { type: object, nullable: true, additionalProperties: true }
