@@ -69,7 +69,7 @@ publicRoutes.get('/databases/:id/games', async (c) => {
   const results = await c.env.DB.prepare(
     `SELECT g.id, g.event, g.site, g.date, g.round, g.board, g.white, g.black,
             g.white_elo, g.black_elo, g.white_team, g.black_team,
-            g.white_fide_id, g.black_fide_id, g.white_cz_id, g.black_cz_id,
+            g.white_fide_id, g.black_fide_id, g.white_cze_id, g.black_cze_id,
             g.result, g.eco, g.ply_count
      FROM games g ${whereClause}
      ORDER BY g.${sortColumn} ${order}

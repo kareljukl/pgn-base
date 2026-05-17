@@ -13,8 +13,8 @@ export type EditorHeaders = {
   BlackTeam: string;
   WhiteFideId: string;
   BlackFideId: string;
-  WhiteCzId: string;
-  BlackCzId: string;
+  WhiteCzeId: string;
+  BlackCzeId: string;
   ECO: string;
 };
 
@@ -34,8 +34,8 @@ export function emptyHeaders(): EditorHeaders {
     BlackTeam: '',
     WhiteFideId: '',
     BlackFideId: '',
-    WhiteCzId: '',
-    BlackCzId: '',
+    WhiteCzeId: '',
+    BlackCzeId: '',
     ECO: '',
   };
 }
@@ -81,8 +81,8 @@ export type GameRowLike = {
   black_team: string | null;
   white_fide_id: string | null;
   black_fide_id: string | null;
-  white_cz_id: string | null;
-  black_cz_id: string | null;
+  white_cze_id: string | null;
+  black_cze_id: string | null;
   result: string | null;
   eco: string | null;
 };
@@ -90,7 +90,7 @@ export type GameRowLike = {
 const HEADER_KEYS: (keyof EditorHeaders)[] = [
   'Event', 'Site', 'White', 'Black', 'Date', 'Round', 'Board', 'Result',
   'WhiteElo', 'BlackElo', 'WhiteTeam', 'BlackTeam',
-  'WhiteFideId', 'BlackFideId', 'WhiteCzId', 'BlackCzId', 'ECO',
+  'WhiteFideId', 'BlackFideId', 'WhiteCzeId', 'BlackCzeId', 'ECO',
 ];
 
 export function headersFromGameRow(g: GameRowLike): EditorHeaders {
@@ -109,8 +109,8 @@ export function headersFromGameRow(g: GameRowLike): EditorHeaders {
     BlackTeam: g.black_team ?? '',
     WhiteFideId: g.white_fide_id ?? '',
     BlackFideId: g.black_fide_id ?? '',
-    WhiteCzId: g.white_cz_id ?? '',
-    BlackCzId: g.black_cz_id ?? '',
+    WhiteCzeId: g.white_cze_id ?? '',
+    BlackCzeId: g.black_cze_id ?? '',
     ECO: g.eco ?? '',
   };
 }

@@ -62,8 +62,8 @@ Po zahození přesměrovat zpět na `/db/:id`.
 │                          │  BlackTeam [______________]      │
 │                          │  WhiteFideId [________]          │
 │                          │  BlackFideId [________]          │
-│                          │  WhiteCzId   [________]          │
-│                          │  BlackCzId   [________]          │
+│                          │  WhiteCzeId   [________]          │
+│                          │  BlackCzeId   [________]          │
 └──────────────────────────┴──────────────────────────────────┘
 ```
 
@@ -188,7 +188,7 @@ Zobrazit validační hlášku u prázdných povinných polí při pokusu o ulož
 
 - `Date` — předvyplnit dnešním datem ve formátu `YYYY.MM.DD`
 - `Round`, `WhiteElo`, `BlackElo`, `WhiteTeam`, `BlackTeam`
-- `WhiteFideId`, `BlackFideId`, `WhiteCzId`, `BlackCzId` — prostá textová pole
+- `WhiteFideId`, `BlackFideId`, `WhiteCzeId`, `BlackCzeId` — prostá textová pole
 - `Result` — dropdown: `*`, `1-0`, `0-1`, `1/2-1/2` (výchozí: `*`)
 
 ### Automaticky doplňované tagy

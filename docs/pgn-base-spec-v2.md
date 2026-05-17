@@ -111,7 +111,7 @@ pgn-base/
 │   ├── PLAN.md
 │   ├── feat-game-sidebar-navigation.md
 │   ├── feat-game-editor.md                # Vytváření partií od nuly (v1)
-│   ├── feat-game-editor-v2.md             # FIDE/CzId sloupce + PlyCount
+│   ├── feat-game-editor-v2.md             # FIDE/CzeId sloupce + PlyCount
 │   ├── feat-game-edit.md                  # Editace existujících partií
 │   └── feat-engine-improvements.md        # MultiPV, SAN, šipky
 │
@@ -160,8 +160,8 @@ CREATE TABLE games (
   black_team     TEXT,
   white_fide_id  TEXT,                     -- v2: FIDE identifikátor
   black_fide_id  TEXT,
-  white_cz_id    TEXT,                     -- v2: ČŠS identifikátor
-  black_cz_id    TEXT,
+  white_cze_id    TEXT,                     -- v2: ČŠS identifikátor
+  black_cze_id    TEXT,
   result         TEXT,                     -- '1-0' | '0-1' | '1/2-1/2' | '*'
   eco            TEXT,
   ply_count      INTEGER,                  -- v2: počet půltahů (computed na backendu)
@@ -182,7 +182,7 @@ CREATE INDEX idx_databases_public ON databases(is_public);
 
 ```bash
 cd backend
-for COL in "white_fide_id TEXT" "black_fide_id TEXT" "white_cz_id TEXT" "black_cz_id TEXT" "ply_count INTEGER"; do
+for COL in "white_fide_id TEXT" "black_fide_id TEXT" "white_cze_id TEXT" "black_cze_id TEXT" "ply_count INTEGER"; do
   npx wrangler d1 execute pgn-base-db --remote --command "ALTER TABLE games ADD COLUMN $COL"
 done
 ```
@@ -355,7 +355,7 @@ Nová partie                                                 [Zahodit] [Uložit]
 │  Stockfish Analysis      │  HLAVIČKY PARTIE             │
 │  Strom zahájení          │  Event * White * Black *     │
 │                          │  Date Round Result           │
-│                          │  ELO, Team, FideId, CzId     │
+│                          │  ELO, Team, FideId, CzeId     │
 └──────────────────────────┴──────────────────────────────┘
 ```
 
@@ -593,5 +593,5 @@ npx wrangler pages deploy dist --project-name pgn-base --commit-dirty=true --com
 - Integrace s appchess.cz pro napovídání hráčů podle FIDE/ČŠS ID
 - Kontumace a nestandardní výsledky
 - Autosave editoru do D1 jako draft stav (nyní jen localStorage)
-- Filtrování / řazení podle FIDE/CzId sloupců v UI
+- Filtrování / řazení podle FIDE/CzeId sloupců v UI
 - Backfill `ply_count` pro existující záznamy

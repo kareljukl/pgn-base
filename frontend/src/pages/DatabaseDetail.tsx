@@ -29,8 +29,8 @@ type Game = {
   black_team: string | null;
   white_fide_id: string | null;
   black_fide_id: string | null;
-  white_cz_id: string | null;
-  black_cz_id: string | null;
+  white_cze_id: string | null;
+  black_cze_id: string | null;
   result: string | null;
   eco: string | null;
   moves_pgn?: string;

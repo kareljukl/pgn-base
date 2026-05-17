@@ -26,7 +26,7 @@ Secrets for local dev are in `backend/.dev.vars` (gitignored). Required vars: `G
 
 **Note:** After changing `database_id` in `wrangler.toml`, the local D1 SQLite file changes. Run `npm run db:reset` to recreate local data.
 
-**Schema migrations:** `schema.sql` uses `CREATE TABLE IF NOT EXISTS`, so new columns added to an existing table won't apply via `db:reset`. For local dev either delete the SQLite file or run an explicit `ALTER TABLE` via `npx wrangler d1 execute pgn-base-db --local --command "..."`. For production, run the same `--remote` (see `docs/feat-game-editor-v2.md` for the FIDE/CzId column migration as an example).
+**Schema migrations:** `schema.sql` uses `CREATE TABLE IF NOT EXISTS`, so new columns added to an existing table won't apply via `db:reset`. For local dev either delete the SQLite file or run an explicit `ALTER TABLE` via `npx wrangler d1 execute pgn-base-db --local --command "..."`. For production, run the same `--remote` (see `docs/feat-game-editor-v2.md` for the FIDE/CzeId column migration as an example).
 
 ### Frontend (React 18 + Vite)
 ```bash
@@ -128,7 +128,7 @@ All API routes are under `/api/v1/`. Games routes are mounted on `/api/v1/databa
 **Drafts:** Editor autosaves every minute to localStorage. Keys: `pgn-base-draft-${dbId}` (create mode) / `pgn-base-draft-edit-${gameId}` (edit mode). Restored via `RestoreDraftDialog` on next mount.
 
 ### Database schema (D1/SQLite)
-Three tables: `users`, `databases`, `games`. The `games` table stores all PGN headers as typed columns (for filtering/sorting): `event`, `site`, `date`, `round`, `board`, `white`, `black`, `white_elo`, `black_elo`, `white_team`, `black_team`, `white_fide_id`, `black_fide_id`, `white_cz_id`, `black_cz_id`, `result`, `eco`, `ply_count` (computed from movetext on insert/update), plus `moves_pgn` for the raw movetext. See `backend/src/db/schema.sql`.
+Three tables: `users`, `databases`, `games`. The `games` table stores all PGN headers as typed columns (for filtering/sorting): `event`, `site`, `date`, `round`, `board`, `white`, `black`, `white_elo`, `black_elo`, `white_team`, `black_team`, `white_fide_id`, `black_fide_id`, `white_cze_id`, `black_cze_id`, `result`, `eco`, `ply_count` (computed from movetext on insert/update), plus `moves_pgn` for the raw movetext. See `backend/src/db/schema.sql`.
 
 ## Key Design Decisions
 - PGN movetext is stored as raw text, parsed on the frontend only when viewing. No server-side move validation. Backend only computes `ply_count` via SAN regex on insert/update.

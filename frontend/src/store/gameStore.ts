@@ -21,8 +21,8 @@ type GameInfo = {
   date?: string;
   whiteFideId?: string;
   blackFideId?: string;
-  whiteCzId?: string;
-  blackCzId?: string;
+  whiteCzeId?: string;
+  blackCzeId?: string;
 };
 
 type GameState = {

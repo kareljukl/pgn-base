@@ -71,11 +71,11 @@ export function HeaderForm({ headers, onChange, showRequired, initialHeaders }: 
         <Label text="BlackFideId" />
         <Input value={headers.BlackFideId} onChange={(v) => set('BlackFideId', v)} changed={changed('BlackFideId')} />
 
-        <Label text="WhiteCzId" />
-        <Input value={headers.WhiteCzId} onChange={(v) => set('WhiteCzId', v)} changed={changed('WhiteCzId')} />
+        <Label text="WhiteCzeId" />
+        <Input value={headers.WhiteCzeId} onChange={(v) => set('WhiteCzeId', v)} changed={changed('WhiteCzeId')} />
 
-        <Label text="BlackCzId" />
-        <Input value={headers.BlackCzId} onChange={(v) => set('BlackCzId', v)} changed={changed('BlackCzId')} />
+        <Label text="BlackCzeId" />
+        <Input value={headers.BlackCzeId} onChange={(v) => set('BlackCzeId', v)} changed={changed('BlackCzeId')} />
       </div>
     </div>
   );

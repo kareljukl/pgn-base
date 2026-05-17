@@ -2,7 +2,7 @@
 
 Tento dokument navazuje na `feat-game-editor.md` (v1). V1 byla implementována
 bez polí, která vyžadovala změnu DB schématu. v2 dotahuje původní spec do plného
-rozsahu — přidává hlavičky `WhiteFideId`, `BlackFideId`, `WhiteCzId`, `BlackCzId`
+rozsahu — přidává hlavičky `WhiteFideId`, `BlackFideId`, `WhiteCzeId`, `BlackCzeId`
 a automatický tag `PlyCount`.
 
 ## Motivace
@@ -21,8 +21,8 @@ a automatický tag `PlyCount`.
 ```sql
 ALTER TABLE games ADD COLUMN white_fide_id TEXT;
 ALTER TABLE games ADD COLUMN black_fide_id TEXT;
-ALTER TABLE games ADD COLUMN white_cz_id   TEXT;
-ALTER TABLE games ADD COLUMN black_cz_id   TEXT;
+ALTER TABLE games ADD COLUMN white_cze_id   TEXT;
+ALTER TABLE games ADD COLUMN black_cze_id   TEXT;
 ALTER TABLE games ADD COLUMN ply_count     INTEGER;
 ```
 
@@ -35,8 +35,8 @@ formát ID se může lišit napříč systémy (FIDE bývá numerické, ČŠS ko
 cd backend
 npx wrangler d1 execute pgn-base --remote --command "ALTER TABLE games ADD COLUMN white_fide_id TEXT;"
 npx wrangler d1 execute pgn-base --remote --command "ALTER TABLE games ADD COLUMN black_fide_id TEXT;"
-npx wrangler d1 execute pgn-base --remote --command "ALTER TABLE games ADD COLUMN white_cz_id   TEXT;"
-npx wrangler d1 execute pgn-base --remote --command "ALTER TABLE games ADD COLUMN black_cz_id   TEXT;"
+npx wrangler d1 execute pgn-base --remote --command "ALTER TABLE games ADD COLUMN white_cze_id   TEXT;"
+npx wrangler d1 execute pgn-base --remote --command "ALTER TABLE games ADD COLUMN black_cze_id   TEXT;"
 npx wrangler d1 execute pgn-base --remote --command "ALTER TABLE games ADD COLUMN ply_count     INTEGER;"
 ```
 
@@ -48,13 +48,13 @@ Lokálně stačí `npm run db:reset` (přepíše SQLite soubor podle schema.sql)
 
 - Rozšířit `GameRow` typ o nová pole.
 - V `buildPgn()` přidat emit tagů pro neprázdné hodnoty:
-  - `WhiteFideId`, `BlackFideId`, `WhiteCzId`, `BlackCzId`, `PlyCount`.
+  - `WhiteFideId`, `BlackFideId`, `WhiteCzeId`, `BlackCzeId`, `PlyCount`.
 - Pořadí tagů: po `BlackElo`, před `ECO` (volitelné — záleží na konvenci).
 
 ### `backend/src/routes/games.ts`
 
 - POST `/api/v1/databases/:dbId/games`:
-  - Z `headers` objektu číst `WhiteFideId`, `BlackFideId`, `WhiteCzId`, `BlackCzId`.
+  - Z `headers` objektu číst `WhiteFideId`, `BlackFideId`, `WhiteCzeId`, `BlackCzeId`.
   - `PlyCount` — buď číst z headers (pokud frontend pošle), nebo dopočítat z movetextu.
   - Rozšířit SQL INSERT o nové sloupce.
 - GET single / list — vrátit nové sloupce v SELECT.
@@ -73,7 +73,7 @@ Lokálně stačí `npm run db:reset` (přepíše SQLite soubor podle schema.sql)
 
 ### `pages/GameEditor.tsx` / `components/GameEditor/HeaderForm.tsx`
 
-- Odkrýt v UI 4 textová pole pro `WhiteFideId`, `BlackFideId`, `WhiteCzId`, `BlackCzId`.
+- Odkrýt v UI 4 textová pole pro `WhiteFideId`, `BlackFideId`, `WhiteCzeId`, `BlackCzeId`.
 - Layout zachovat dle původní specifikace (`feat-game-editor.md`).
 
 ### `lib/editorPgn.ts`

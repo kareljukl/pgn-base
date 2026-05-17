@@ -23,8 +23,8 @@ type GameData = {
   date: string | null;
   white_fide_id: string | null;
   black_fide_id: string | null;
-  white_cz_id: string | null;
-  black_cz_id: string | null;
+  white_cze_id: string | null;
+  black_cze_id: string | null;
   moves_pgn: string;
 };
 
@@ -107,8 +107,8 @@ export function PublicGameViewer() {
         date: g.date ?? undefined,
         whiteFideId: g.white_fide_id ?? undefined,
         blackFideId: g.black_fide_id ?? undefined,
-        whiteCzId: g.white_cz_id ?? undefined,
-        blackCzId: g.black_cz_id ?? undefined,
+        whiteCzeId: g.white_cze_id ?? undefined,
+        blackCzeId: g.black_cze_id ?? undefined,
       });
     }
   }, [data, loadGame]);
@@ -353,11 +353,11 @@ function resultColor(result: string | null): string {
 function PlayerIds({ info }: { info: {
   whiteFideId?: string;
   blackFideId?: string;
-  whiteCzId?: string;
-  blackCzId?: string;
+  whiteCzeId?: string;
+  blackCzeId?: string;
 } }) {
-  const whiteIds = formatIds(info.whiteFideId, info.whiteCzId);
-  const blackIds = formatIds(info.blackFideId, info.blackCzId);
+  const whiteIds = formatIds(info.whiteFideId, info.whiteCzeId);
+  const blackIds = formatIds(info.blackFideId, info.blackCzeId);
   if (!whiteIds && !blackIds) return null;
   return (
     <div style={{ fontSize: '0.75rem', color: '#888', marginTop: '0.15rem' }}>
@@ -368,9 +368,9 @@ function PlayerIds({ info }: { info: {
   );
 }
 
-function formatIds(fideId?: string, czId?: string): string {
+function formatIds(fideId?: string, czeId?: string): string {
   const parts: string[] = [];
   if (fideId) parts.push(`FIDE ${fideId}`);
-  if (czId) parts.push(`ČŠS ${czId}`);
+  if (czeId) parts.push(`ČŠS ${czeId}`);
   return parts.join(', ');
 }
