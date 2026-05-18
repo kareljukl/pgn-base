@@ -7,7 +7,6 @@ import { useGameStore } from '../store/gameStore';
 import { Board } from '../components/Board/Board';
 import { MoveList } from '../components/MoveList/MoveList';
 import { Analysis } from '../components/Analysis/Analysis';
-import { OpeningExplorer } from '../components/OpeningExplorer/OpeningExplorer';
 import { useVariantArrowsToggle } from '../hooks/useVariantArrowsToggle';
 import { buildVariantArrows } from '../lib/variantArrows';
 import { getLastMoveSquares } from '../lib/lastMove';
@@ -180,7 +179,6 @@ export function PublicGameViewer() {
             ))}
           </div>
           <Analysis fen={currentFen} onBestMove={handleBestMove} />
-          <OpeningExplorer fen={currentFen} />
         </div>
         <div style={{ flex: 1, minWidth: 250 }}>
           <MoveList />

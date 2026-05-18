@@ -2,12 +2,15 @@ import { useEffect, useRef, type Ref } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { nagToSymbol, type MoveNode } from '../../lib/moveTree';
 import { useVariantArrowsToggle } from '../../hooks/useVariantArrowsToggle';
+import { useSanFormat } from '../../hooks/useSanFormat';
+import { formatSan, type SanMode } from '../../lib/sanFormat';
 
 export function MoveList() {
   const { tree, path, goToMove } = useGameStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLSpanElement>(null);
   const [variantArrowsOn, setVariantArrowsOn] = useVariantArrowsToggle();
+  const sanMode = useSanFormat();
 
   useEffect(() => {
     if (activeRef.current && containerRef.current) {
@@ -73,6 +76,7 @@ export function MoveList() {
           isBlackFirst={tree.startFen.includes(' b ')}
           isMainLine={true}
           depth={0}
+          sanMode={sanMode}
         />
       </div>
     </div>
@@ -89,6 +93,7 @@ function Moves({
   isBlackFirst,
   isMainLine,
   depth,
+  sanMode,
 }: {
   moves: MoveNode[];
   basePath: number[];
@@ -99,6 +104,7 @@ function Moves({
   isBlackFirst: boolean;
   isMainLine: boolean;
   depth: number;
+  sanMode: SanMode;
 }) {
   const elements: React.ReactNode[] = [];
 
@@ -140,7 +146,7 @@ function Moves({
           whiteSpace: 'nowrap',
         }}
       >
-        {move.san}
+        {formatSan(move.san, sanMode)}
       </span>
     );
 
@@ -182,6 +188,7 @@ function Moves({
               isBlackFirst={!isWhite}
               isMainLine={false}
               depth={depth + 1}
+              sanMode={sanMode}
             />
           </div>
         );

@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useOpeningBook } from '../../hooks/useOpeningBook';
+import { useSanFormat } from '../../hooks/useSanFormat';
+import { formatSan } from '../../lib/sanFormat';
 
 const STORAGE_KEY = 'pgn-base-opening-book';
 
@@ -10,6 +12,7 @@ type Props = {
 export function OpeningBook({ fen }: Props) {
   const [enabled, setEnabled] = useState(() => localStorage.getItem(STORAGE_KEY) === 'on');
   const { moves, hasData, isLoading, isRateLimited } = useOpeningBook(fen, enabled);
+  const sanMode = useSanFormat();
 
   const toggle = () => {
     const next = !enabled;
@@ -71,7 +74,7 @@ export function OpeningBook({ fen }: Props) {
               return (
                 <tr key={move.san} style={{ borderBottom: '1px solid #f0f0f0' }}>
                   <td style={{ padding: '0.3rem 0.5rem', fontWeight: 600 }}>
-                    {move.san}
+                    {formatSan(move.san, sanMode)}
                   </td>
                   <td style={{ padding: '0.3rem 0.5rem', textAlign: 'right', color: '#666' }}>
                     {formatCount(move.total)}

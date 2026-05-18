@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react';
+import { useSanFormat } from '../../hooks/useSanFormat';
+import { formatSan } from '../../lib/sanFormat';
 
 type Props = {
   moves: string[];
@@ -82,6 +84,7 @@ function MoveSpan({
   activeRef?: React.RefObject<HTMLSpanElement>;
   disabled?: boolean;
 }) {
+  const mode = useSanFormat();
   return (
     <span
       ref={activeRef}
@@ -95,7 +98,7 @@ function MoveSpan({
         fontWeight: active ? 600 : 400,
       }}
     >
-      {san}
+      {formatSan(san, mode)}
     </span>
   );
 }

@@ -1,18 +1,29 @@
 import { useEffect } from 'react';
 import { useStockfish, type StockfishEval } from '../../hooks/useStockfish';
+import { useCloudEval } from '../../hooks/useCloudEval';
+import { useSanFormat } from '../../hooks/useSanFormat';
+import { formatSan, type SanMode } from '../../lib/sanFormat';
 
 type Props = {
   fen: string;
   onBestMove?: (uci: string | null) => void;
 };
 
+type DisplayPv = {
+  multiPvIndex: number;
+  score: { type: 'cp' | 'mate'; value: number };
+  pvUci: string;
+  pvSan: string[];
+};
+
 export function Analysis({ fen, onBestMove }: Props) {
+  const cloud = useCloudEval(fen);
+  const sanMode = useSanFormat();
   const {
     isEnabled,
     isReady,
     isAnalyzing,
     evaluations,
-    bestMoveUci,
     currentDepth,
     multiPV,
     depth,
@@ -25,29 +36,65 @@ export function Analysis({ fen, onBestMove }: Props) {
     toggle,
   } = useStockfish();
 
-  // Auto-analyze when position / depth / multiPV change
+  const cloudPriority = cloud.hasData;
+
+  // Engine orchestrace: cloud má prioritu, lokál běží jen při cache miss
   useEffect(() => {
-    if (isEnabled && isReady) {
+    if (!isEnabled || !isReady) return;
+    if (cloudPriority) {
+      stopAnalysis();
+    } else {
       startAnalysis(fen);
     }
     return () => {
       if (isEnabled) stopAnalysis();
     };
-  }, [fen, isEnabled, isReady, startAnalysis, stopAnalysis]);
+  }, [fen, isEnabled, isReady, cloudPriority, startAnalysis, stopAnalysis]);
 
-  // Push best-move arrow up
+  // Zdroj dat pro zobrazení
+  const source: 'cloud' | 'sf' | 'none' =
+    cloudPriority ? 'cloud'
+      : isEnabled && evaluations.length > 0 ? 'sf'
+        : 'none';
+
+  const displayedPvs: DisplayPv[] =
+    source === 'cloud'
+      ? cloud.pvs.slice(0, multiPV).map((pv, i) => ({
+          multiPvIndex: i + 1,
+          score: pv.score,
+          pvUci: pv.pvUci,
+          pvSan: pv.pvSan,
+        }))
+      : source === 'sf'
+        ? evaluations.map((ev: StockfishEval) => ({
+            multiPvIndex: ev.multiPvIndex,
+            score: ev.score,
+            pvUci: ev.pvUci,
+            pvSan: ev.pvSan,
+          }))
+        : [];
+
+  const sourceLabel =
+    source === 'cloud' ? `Lichess cloud · d${cloud.depth}`
+      : source === 'sf' ? `Stockfish 18 · d${currentDepth}`
+        : null;
+
+  // Best-move šipka z aktuálně zobrazeného zdroje
   useEffect(() => {
     if (!onBestMove) return;
-    if (!isEnabled || !arrows) {
+    if (!arrows) {
       onBestMove(null);
-    } else {
-      onBestMove(bestMoveUci);
+      return;
     }
-  }, [onBestMove, isEnabled, arrows, bestMoveUci]);
+    const firstUci = displayedPvs[0]?.pvUci.split(/\s+/)[0] ?? null;
+    onBestMove(firstUci);
+    // displayedPvs identitu měníme jen při změně dat; deps na primitivech stačí
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onBestMove, arrows, displayedPvs[0]?.pvUci]);
 
   return (
     <div style={containerStyle}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginBottom: isEnabled ? '0.5rem' : 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginBottom: displayedPvs.length > 0 || source === 'none' ? '0.5rem' : 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <button
             onClick={toggle}
@@ -63,11 +110,10 @@ export function Analysis({ fen, onBestMove }: Props) {
           >
             {isEnabled ? 'Engine ON' : 'Engine OFF'}
           </button>
-          {isEnabled && (
+          {sourceLabel && (
             <span style={{ fontSize: '0.8rem', color: '#666' }}>
-              Stockfish 18
-              {isAnalyzing && ' · analyzuje...'}
-              {currentDepth > 0 && ` · d${currentDepth}`}
+              {sourceLabel}
+              {source === 'sf' && isAnalyzing && ' · analyzuje…'}
             </span>
           )}
         </div>
@@ -120,18 +166,16 @@ export function Analysis({ fen, onBestMove }: Props) {
         )}
       </div>
 
-      {isEnabled && !isReady && (
-        <p style={{ fontSize: '0.8rem', color: '#888', margin: '0.25rem 0 0' }}>Načítání enginu...</p>
+      {source === 'none' && (
+        <p style={{ fontSize: '0.8rem', color: '#888', margin: '0.25rem 0 0' }}>
+          {placeholderMessage(isEnabled, isReady, cloud.isLoading)}
+        </p>
       )}
 
-      {isEnabled && isReady && evaluations.length === 0 && (
-        <p style={{ fontSize: '0.8rem', color: '#888', margin: '0.25rem 0 0' }}>Hledám...</p>
-      )}
-
-      {isEnabled && evaluations.length > 0 && (
+      {displayedPvs.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-          {evaluations.map((ev) => (
-            <PvLine key={ev.multiPvIndex} ev={ev} />
+          {displayedPvs.map((pv) => (
+            <PvLine key={pv.multiPvIndex} pv={pv} sanMode={sanMode} />
           ))}
         </div>
       )}
@@ -139,9 +183,24 @@ export function Analysis({ fen, onBestMove }: Props) {
   );
 }
 
-function PvLine({ ev }: { ev: StockfishEval }) {
-  const score = formatScore(ev.score);
-  const positive = ev.score.value > 0 || (ev.score.type === 'mate' && ev.score.value !== 0 && ev.score.value > 0);
+function placeholderMessage(isEnabled: boolean, isReady: boolean, cloudLoading: boolean): string {
+  if (cloudLoading) return 'Načítání cloud eval…';
+  if (!isEnabled) return 'Cloud eval není k dispozici. Zapněte engine pro lokální analýzu.';
+  if (!isReady) return 'Načítání enginu…';
+  return 'Stockfish hledá…';
+}
+
+function PvLine({ pv, sanMode }: { pv: DisplayPv; sanMode: SanMode }) {
+  const score = formatScore(pv.score);
+  const positive = pv.score.value > 0;
+  const sanNode = pv.pvSan.length > 0
+    ? pv.pvSan.map((s, i) => (
+        <span key={i}>
+          {i > 0 ? ' ' : ''}
+          {formatSan(s, sanMode)}
+        </span>
+      ))
+    : pv.pvUci;
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', fontFamily: 'monospace', fontSize: '0.85rem' }}>
       <span style={{
@@ -153,7 +212,7 @@ function PvLine({ ev }: { ev: StockfishEval }) {
         {score}
       </span>
       <span style={{ color: '#333', wordBreak: 'break-word', lineHeight: 1.5 }}>
-        {ev.pvSan.length > 0 ? ev.pvSan.join(' ') : ev.pvUci}
+        {sanNode}
       </span>
     </div>
   );

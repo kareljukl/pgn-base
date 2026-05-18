@@ -17,7 +17,6 @@ import {
 import { linearizeMoves, linearPosition, hasAnyVariation } from '../lib/navigation';
 import { MoveList } from '../components/MoveList/MoveList';
 import { Analysis } from '../components/Analysis/Analysis';
-import { OpeningExplorer } from '../components/OpeningExplorer/OpeningExplorer';
 import { OpeningBook } from '../components/OpeningBook/OpeningBook';
 import { useVariantArrowsToggle } from '../hooks/useVariantArrowsToggle';
 import { buildVariantArrows } from '../lib/variantArrows';
@@ -447,11 +446,8 @@ export function GameViewer() {
             <NavButton onClick={goToEnd} label="▶|" title="Na konec (End)" />
           </div>
 
-          {/* Stockfish Analysis */}
+          {/* Analysis (cloud + Stockfish fallback) */}
           <Analysis fen={currentFen} onBestMove={handleBestMove} />
-
-          {/* Cloud Eval */}
-          <OpeningExplorer fen={currentFen} />
 
           {/* Opening Book (Masters) */}
           <OpeningBook fen={currentFen} />
