@@ -4,6 +4,7 @@ import { databases } from './routes/databases';
 import { games } from './routes/games';
 import { publicRoutes } from './routes/public';
 import { explorer } from './routes/explorer';
+import { chesscz } from './routes/chesscz';
 import type { AppEnv } from './types';
 
 const app = new Hono<AppEnv>();
@@ -57,5 +58,6 @@ app.route('/api/v1/databases', databases);
 app.route('/api/v1/databases', games);
 app.route('/api/v1/public', publicRoutes);
 app.route('/api/v1/explorer', explorer);
+app.route('/api/v1/chesscz', chesscz);
 
 export default app;

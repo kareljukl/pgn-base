@@ -47,6 +47,41 @@ CREATE TABLE IF NOT EXISTS games (
   updated_at     INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS chesscz_player (
+  cze_id          INTEGER PRIMARY KEY,
+  fide_id         INTEGER,
+  full_name       TEXT,
+  first_name      TEXT,
+  last_name       TEXT,
+  club_id         TEXT,
+  club_name       TEXT,
+  birth_year      INTEGER,
+  gender          TEXT,
+  player_class    TEXT,
+  cze_std_elo     INTEGER,
+  cze_rapid_elo   INTEGER,
+  fide_std_elo    INTEGER,
+  fide_rapid_elo  INTEGER,
+  fide_blitz_elo  INTEGER,
+  raw_json        TEXT NOT NULL,
+  fetched_at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_chesscz_player_fide_id ON chesscz_player(fide_id);
+CREATE INDEX IF NOT EXISTS idx_chesscz_player_full_name ON chesscz_player(full_name COLLATE NOCASE);
+
+CREATE TABLE IF NOT EXISTS chesscz_search (
+  query_norm    TEXT PRIMARY KEY,
+  result_ids    TEXT NOT NULL,
+  fetched_at    INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS chesscz_rate (
+  id              INTEGER PRIMARY KEY,
+  last_fetch_at   INTEGER NOT NULL DEFAULT 0,
+  blocked_until   INTEGER NOT NULL DEFAULT 0
+);
+INSERT OR IGNORE INTO chesscz_rate (id, last_fetch_at, blocked_until) VALUES (1, 0, 0);
+
 CREATE INDEX IF NOT EXISTS idx_games_database_id ON games(database_id);
 CREATE INDEX IF NOT EXISTS idx_games_white ON games(white COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_games_black ON games(black COLLATE NOCASE);

@@ -1,4 +1,7 @@
+import { useState } from 'react';
 import type { EditorHeaders } from '../../lib/editorPgn';
+import { PlayerAutocomplete } from './PlayerAutocomplete';
+import { fetchPlayerByCzeId, type PlayerHit } from '../../hooks/useChessczSearch';
 
 type Props = {
   headers: EditorHeaders;
@@ -9,7 +12,12 @@ type Props = {
 
 const RESULTS = ['*', '1-0', '0-1', '1/2-1/2'];
 
+type Side = 'White' | 'Black';
+
 export function HeaderForm({ headers, onChange, showRequired, initialHeaders }: Props) {
+  const [refreshingSide, setRefreshingSide] = useState<Side | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+
   const set = <K extends keyof EditorHeaders>(key: K, value: EditorHeaders[K]) => {
     onChange({ ...headers, [key]: value });
   };
@@ -17,9 +25,49 @@ export function HeaderForm({ headers, onChange, showRequired, initialHeaders }: 
   const missing = (key: keyof EditorHeaders) => showRequired && !headers[key].trim();
   const changed = (key: keyof EditorHeaders) => !!initialHeaders && headers[key] !== initialHeaders[key];
 
+  const applyPlayer = (side: Side, p: PlayerHit) => {
+    const eloFallback = p.fideStdElo ?? p.czeStdElo ?? null;
+    const fullName = p.fullName?.trim();
+    const clubName = p.clubName?.trim();
+    onChange({
+      ...headers,
+      [side]: fullName || headers[side],
+      [`${side}CzeId`]: String(p.czeId),
+      [`${side}FideId`]: p.fideId != null ? String(p.fideId) : headers[`${side}FideId`],
+      [`${side}CzeElo`]: p.czeStdElo != null ? String(p.czeStdElo) : headers[`${side}CzeElo`],
+      [`${side}FideElo`]: p.fideStdElo != null ? String(p.fideStdElo) : headers[`${side}FideElo`],
+      [`${side}Elo`]: eloFallback != null ? String(eloFallback) : headers[`${side}Elo`],
+      [`${side}Team`]: clubName || headers[`${side}Team`],
+    });
+  };
+
+  const refresh = async (side: Side) => {
+    const id = headers[`${side}CzeId`];
+    if (!id.trim()) return;
+    setRefreshingSide(side);
+    setRefreshError(null);
+    try {
+      const p = await fetchPlayerByCzeId(id.trim(), true);
+      applyPlayer(side, p);
+    } catch (e) {
+      const status = (e as { status?: number } | null)?.status;
+      setRefreshError(
+        status === 429 ? 'Vyhledávání omezeno, zkus za chvíli.'
+        : status === 503 ? 'ŠSČR dočasně nedostupné.'
+        : status === 404 ? 'Hráč nenalezen.'
+        : 'Chyba při aktualizaci.'
+      );
+    } finally {
+      setRefreshingSide(null);
+    }
+  };
+
   return (
     <div style={containerStyle}>
       <div style={headerStyle}>Hlavičky partie</div>
+      {refreshError && (
+        <div style={{ fontSize: '0.75rem', color: '#b91c1c', marginBottom: '0.5rem' }}>{refreshError}</div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', gap: '0.4rem 0.5rem', alignItems: 'center' }}>
         <Label text="Event *" />
         <Input value={headers.Event} onChange={(v) => set('Event', v)} invalid={missing('Event')} changed={changed('Event')} />
@@ -28,10 +76,22 @@ export function HeaderForm({ headers, onChange, showRequired, initialHeaders }: 
         <Input value={headers.Site} onChange={(v) => set('Site', v)} changed={changed('Site')} />
 
         <Label text="White *" />
-        <Input value={headers.White} onChange={(v) => set('White', v)} invalid={missing('White')} changed={changed('White')} />
+        <PlayerAutocomplete
+          value={headers.White}
+          onChange={(v) => set('White', v)}
+          onPick={(p) => applyPlayer('White', p)}
+          invalid={missing('White')}
+          changed={changed('White')}
+        />
 
         <Label text="Black *" />
-        <Input value={headers.Black} onChange={(v) => set('Black', v)} invalid={missing('Black')} changed={changed('Black')} />
+        <PlayerAutocomplete
+          value={headers.Black}
+          onChange={(v) => set('Black', v)}
+          onPick={(p) => applyPlayer('Black', p)}
+          invalid={missing('Black')}
+          changed={changed('Black')}
+        />
 
         <Label text="Date" />
         <Input value={headers.Date} onChange={(v) => set('Date', v)} placeholder="YYYY.MM.DD" changed={changed('Date')} />
@@ -84,10 +144,24 @@ export function HeaderForm({ headers, onChange, showRequired, initialHeaders }: 
         <Input value={headers.BlackFideId} onChange={(v) => set('BlackFideId', v)} changed={changed('BlackFideId')} />
 
         <Label text="WhiteCzeId" />
-        <Input value={headers.WhiteCzeId} onChange={(v) => set('WhiteCzeId', v)} changed={changed('WhiteCzeId')} />
+        <InputWithRefresh
+          value={headers.WhiteCzeId}
+          onChange={(v) => set('WhiteCzeId', v)}
+          changed={changed('WhiteCzeId')}
+          canRefresh={headers.WhiteCzeId.trim().length > 0 && refreshingSide !== 'White'}
+          refreshing={refreshingSide === 'White'}
+          onRefresh={() => refresh('White')}
+        />
 
         <Label text="BlackCzeId" />
-        <Input value={headers.BlackCzeId} onChange={(v) => set('BlackCzeId', v)} changed={changed('BlackCzeId')} />
+        <InputWithRefresh
+          value={headers.BlackCzeId}
+          onChange={(v) => set('BlackCzeId', v)}
+          changed={changed('BlackCzeId')}
+          canRefresh={headers.BlackCzeId.trim().length > 0 && refreshingSide !== 'Black'}
+          refreshing={refreshingSide === 'Black'}
+          onRefresh={() => refresh('Black')}
+        />
       </div>
     </div>
   );
@@ -125,6 +199,46 @@ function Input({
         background: invalid ? '#fef2f2' : changed ? '#fef9c3' : '#fff',
       }}
     />
+  );
+}
+
+function InputWithRefresh({
+  value,
+  onChange,
+  changed,
+  canRefresh,
+  refreshing,
+  onRefresh,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  changed?: boolean;
+  canRefresh: boolean;
+  refreshing: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+      <Input value={value} onChange={onChange} changed={changed} />
+      <button
+        type="button"
+        onClick={onRefresh}
+        disabled={!canRefresh}
+        title="Aktualizovat hráče z ŠSČR"
+        style={{
+          padding: '0.2rem 0.4rem',
+          fontSize: '0.8rem',
+          cursor: canRefresh ? 'pointer' : 'default',
+          border: '1px solid #ddd',
+          borderRadius: 3,
+          background: '#fff',
+          color: canRefresh ? '#333' : '#bbb',
+          minWidth: 28,
+        }}
+      >
+        {refreshing ? '…' : '⟳'}
+      </button>
+    </div>
   );
 }
 
