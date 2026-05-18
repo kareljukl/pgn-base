@@ -34,9 +34,9 @@ export function useDebounced<T>(value: T, ms: number): T {
 }
 
 export function useChessczSearch(rawQuery: string) {
-  const debounced = useDebounced(rawQuery.trim(), 700);
+  const debounced = useDebounced(rawQuery.trim(), 1000);
   const enabled = debounced.length >= MIN_QUERY_LEN;
-  return useQuery({
+  const query = useQuery({
     queryKey: ['chesscz-search', debounced.toLowerCase()],
     queryFn: () => api.get<SearchResponse>(`/chesscz/search?q=${encodeURIComponent(debounced)}`),
     enabled,
@@ -45,6 +45,7 @@ export function useChessczSearch(rawQuery: string) {
     gcTime: 30 * 60_000,
     retry: false,
   });
+  return { ...query, debouncedQuery: debounced };
 }
 
 export async function fetchPlayerByCzeId(czeId: string, refresh = false): Promise<PlayerHit> {

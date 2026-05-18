@@ -14,8 +14,10 @@ export function PlayerAutocomplete({ value, onChange, onPick, invalid, changed }
   const [highlighted, setHighlighted] = useState(0);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  const { data, isFetching, error } = useChessczSearch(value);
+  const { data, isFetching, error, debouncedQuery } = useChessczSearch(value);
   const players = data?.players ?? [];
+  const inputTrimmed = value.trim();
+  const pendingDebounce = inputTrimmed.length >= MIN_QUERY_LEN && inputTrimmed !== debouncedQuery;
 
   useEffect(() => {
     setHighlighted(0);
@@ -65,23 +67,26 @@ export function PlayerAutocomplete({ value, onChange, onPick, invalid, changed }
       />
       {showDropdown && (
         <div style={dropdownStyle}>
-          {isFetching && players.length === 0 && (
+          {pendingDebounce && (
             <div style={emptyStyle}>Hledám…</div>
           )}
-          {!isFetching && players.length === 0 && !error && (
+          {!pendingDebounce && isFetching && players.length === 0 && (
+            <div style={emptyStyle}>Hledám…</div>
+          )}
+          {!pendingDebounce && !isFetching && players.length === 0 && !error && (
             <div style={emptyStyle}>Žádné výsledky</div>
           )}
-          {error && (
+          {!pendingDebounce && error && (
             <div style={errorStyle}>
               {apiStatus === 429 && 'Vyhledávání je dočasně omezeno, zkus za chvíli.'}
               {apiStatus === 503 && 'ŠSČR dočasně nedostupné.'}
               {apiStatus !== 429 && apiStatus !== 503 && 'Chyba vyhledávání.'}
             </div>
           )}
-          {data?.stale && (
+          {!pendingDebounce && data?.stale && (
             <div style={staleNoticeStyle}>Zobrazují se starší data (ŠSČR omezeno).</div>
           )}
-          {players.map((p, i) => (
+          {!pendingDebounce && players.map((p, i) => (
             <button
               key={p.czeId}
               type="button"
