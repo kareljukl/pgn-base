@@ -29,6 +29,10 @@ type GameData = {
   black: string | null;
   white_elo: number | null;
   black_elo: number | null;
+  white_fide_elo: number | null;
+  black_fide_elo: number | null;
+  white_cze_elo: number | null;
+  black_cze_elo: number | null;
   result: string | null;
   event: string | null;
   site: string | null;

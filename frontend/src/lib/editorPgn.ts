@@ -8,7 +8,11 @@ export type EditorHeaders = {
   Board: string;
   Result: string;
   WhiteElo: string;
+  WhiteFideElo: string;
+  WhiteCzeElo: string;
   BlackElo: string;
+  BlackFideElo: string;
+  BlackCzeElo: string;
   WhiteTeam: string;
   BlackTeam: string;
   WhiteFideId: string;
@@ -29,7 +33,11 @@ export function emptyHeaders(): EditorHeaders {
     Board: '',
     Result: '*',
     WhiteElo: '',
+    WhiteFideElo: '',
+    WhiteCzeElo: '',
     BlackElo: '',
+    BlackFideElo: '',
+    BlackCzeElo: '',
     WhiteTeam: '',
     BlackTeam: '',
     WhiteFideId: '',
@@ -77,6 +85,10 @@ export type GameRowLike = {
   black: string | null;
   white_elo: number | null;
   black_elo: number | null;
+  white_fide_elo: number | null;
+  black_fide_elo: number | null;
+  white_cze_elo: number | null;
+  black_cze_elo: number | null;
   white_team: string | null;
   black_team: string | null;
   white_fide_id: string | null;
@@ -89,7 +101,9 @@ export type GameRowLike = {
 
 const HEADER_KEYS: (keyof EditorHeaders)[] = [
   'Event', 'Site', 'White', 'Black', 'Date', 'Round', 'Board', 'Result',
-  'WhiteElo', 'BlackElo', 'WhiteTeam', 'BlackTeam',
+  'WhiteElo', 'WhiteFideElo', 'WhiteCzeElo',
+  'BlackElo', 'BlackFideElo', 'BlackCzeElo',
+  'WhiteTeam', 'BlackTeam',
   'WhiteFideId', 'BlackFideId', 'WhiteCzeId', 'BlackCzeId', 'ECO',
 ];
 
@@ -104,7 +118,11 @@ export function headersFromGameRow(g: GameRowLike): EditorHeaders {
     Board: g.board ?? '',
     Result: g.result ?? '*',
     WhiteElo: g.white_elo != null ? String(g.white_elo) : '',
+    WhiteFideElo: g.white_fide_elo != null ? String(g.white_fide_elo) : '',
+    WhiteCzeElo: g.white_cze_elo != null ? String(g.white_cze_elo) : '',
     BlackElo: g.black_elo != null ? String(g.black_elo) : '',
+    BlackFideElo: g.black_fide_elo != null ? String(g.black_fide_elo) : '',
+    BlackCzeElo: g.black_cze_elo != null ? String(g.black_cze_elo) : '',
     WhiteTeam: g.white_team ?? '',
     BlackTeam: g.black_team ?? '',
     WhiteFideId: g.white_fide_id ?? '',

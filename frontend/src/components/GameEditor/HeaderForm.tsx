@@ -56,8 +56,20 @@ export function HeaderForm({ headers, onChange, showRequired, initialHeaders }: 
         <Label text="WhiteElo" />
         <Input value={headers.WhiteElo} onChange={(v) => set('WhiteElo', v)} inputMode="numeric" changed={changed('WhiteElo')} />
 
+        <Label text="WhiteFideElo" />
+        <Input value={headers.WhiteFideElo} onChange={(v) => set('WhiteFideElo', v)} inputMode="numeric" changed={changed('WhiteFideElo')} />
+
+        <Label text="WhiteCzeElo" />
+        <Input value={headers.WhiteCzeElo} onChange={(v) => set('WhiteCzeElo', v)} inputMode="numeric" changed={changed('WhiteCzeElo')} />
+
         <Label text="BlackElo" />
         <Input value={headers.BlackElo} onChange={(v) => set('BlackElo', v)} inputMode="numeric" changed={changed('BlackElo')} />
+
+        <Label text="BlackFideElo" />
+        <Input value={headers.BlackFideElo} onChange={(v) => set('BlackFideElo', v)} inputMode="numeric" changed={changed('BlackFideElo')} />
+
+        <Label text="BlackCzeElo" />
+        <Input value={headers.BlackCzeElo} onChange={(v) => set('BlackCzeElo', v)} inputMode="numeric" changed={changed('BlackCzeElo')} />
 
         <Label text="WhiteTeam" />
         <Input value={headers.WhiteTeam} onChange={(v) => set('WhiteTeam', v)} changed={changed('WhiteTeam')} />

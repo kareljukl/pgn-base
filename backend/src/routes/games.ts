@@ -57,7 +57,9 @@ games.get('/:dbId/games', authRequired, async (c) => {
   ).bind(...params).first<{ total: number }>();
 
   const selectCols = `g.id, g.event, g.site, g.date, g.round, g.board, g.white, g.black,
-            g.white_elo, g.black_elo, g.white_team, g.black_team,
+            g.white_elo, g.black_elo,
+            g.white_fide_elo, g.black_fide_elo, g.white_cze_elo, g.black_cze_elo,
+            g.white_team, g.black_team,
             g.white_fide_id, g.black_fide_id, g.white_cze_id, g.black_cze_id,
             g.result, g.eco, g.ply_count${includeMoves ? ', g.moves_pgn' : ''}`;
 
@@ -113,10 +115,12 @@ games.post('/:dbId/games', authRequired, async (c) => {
   const now = Math.floor(Date.now() / 1000);
   const stmt = c.env.DB.prepare(
     `INSERT INTO games (id, database_id, event, site, date, round, board, white, black,
-     white_elo, black_elo, white_team, black_team,
+     white_elo, black_elo,
+     white_fide_elo, black_fide_elo, white_cze_elo, black_cze_elo,
+     white_team, black_team,
      white_fide_id, black_fide_id, white_cze_id, black_cze_id,
      result, eco, ply_count, moves_pgn, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
   const ids: string[] = [];
@@ -136,6 +140,10 @@ games.post('/:dbId/games', authRequired, async (c) => {
       h.Black || null,
       h.WhiteElo ? parseInt(h.WhiteElo) || null : null,
       h.BlackElo ? parseInt(h.BlackElo) || null : null,
+      h.WhiteFideElo ? parseInt(h.WhiteFideElo) || null : null,
+      h.BlackFideElo ? parseInt(h.BlackFideElo) || null : null,
+      h.WhiteCzeElo ? parseInt(h.WhiteCzeElo) || null : null,
+      h.BlackCzeElo ? parseInt(h.BlackCzeElo) || null : null,
       h.WhiteTeam || null,
       h.BlackTeam || null,
       h.WhiteFideId || null,
@@ -222,6 +230,8 @@ games.patch('/:dbId/games/:gameId', authRequired, async (c) => {
          event = ?, site = ?, date = ?, round = ?, board = ?,
          white = ?, black = ?,
          white_elo = ?, black_elo = ?,
+         white_fide_elo = ?, black_fide_elo = ?,
+         white_cze_elo = ?, black_cze_elo = ?,
          white_team = ?, black_team = ?,
          white_fide_id = ?, black_fide_id = ?,
          white_cze_id = ?, black_cze_id = ?,
@@ -233,6 +243,8 @@ games.patch('/:dbId/games/:gameId', authRequired, async (c) => {
          event = ?, site = ?, date = ?, round = ?, board = ?,
          white = ?, black = ?,
          white_elo = ?, black_elo = ?,
+         white_fide_elo = ?, black_fide_elo = ?,
+         white_cze_elo = ?, black_cze_elo = ?,
          white_team = ?, black_team = ?,
          white_fide_id = ?, black_fide_id = ?,
          white_cze_id = ?, black_cze_id = ?,
@@ -250,6 +262,10 @@ games.patch('/:dbId/games/:gameId', authRequired, async (c) => {
     h.Black || null,
     h.WhiteElo ? parseInt(h.WhiteElo) || null : null,
     h.BlackElo ? parseInt(h.BlackElo) || null : null,
+    h.WhiteFideElo ? parseInt(h.WhiteFideElo) || null : null,
+    h.BlackFideElo ? parseInt(h.BlackFideElo) || null : null,
+    h.WhiteCzeElo ? parseInt(h.WhiteCzeElo) || null : null,
+    h.BlackCzeElo ? parseInt(h.BlackCzeElo) || null : null,
     h.WhiteTeam || null,
     h.BlackTeam || null,
     h.WhiteFideId || null,
@@ -322,6 +338,8 @@ games.post('/:dbId/games/bulk-update', authRequired, async (c) => {
      event = ?, site = ?, date = ?, round = ?, board = ?,
      white = ?, black = ?,
      white_elo = ?, black_elo = ?,
+     white_fide_elo = ?, black_fide_elo = ?,
+     white_cze_elo = ?, black_cze_elo = ?,
      white_team = ?, black_team = ?,
      white_fide_id = ?, black_fide_id = ?,
      white_cze_id = ?, black_cze_id = ?,
@@ -333,6 +351,8 @@ games.post('/:dbId/games/bulk-update', authRequired, async (c) => {
      event = ?, site = ?, date = ?, round = ?, board = ?,
      white = ?, black = ?,
      white_elo = ?, black_elo = ?,
+     white_fide_elo = ?, black_fide_elo = ?,
+     white_cze_elo = ?, black_cze_elo = ?,
      white_team = ?, black_team = ?,
      white_fide_id = ?, black_fide_id = ?,
      white_cze_id = ?, black_cze_id = ?,
@@ -356,6 +376,10 @@ games.post('/:dbId/games/bulk-update', authRequired, async (c) => {
       h.Black || null,
       h.WhiteElo ? parseInt(h.WhiteElo) || null : null,
       h.BlackElo ? parseInt(h.BlackElo) || null : null,
+      h.WhiteFideElo ? parseInt(h.WhiteFideElo) || null : null,
+      h.BlackFideElo ? parseInt(h.BlackFideElo) || null : null,
+      h.WhiteCzeElo ? parseInt(h.WhiteCzeElo) || null : null,
+      h.BlackCzeElo ? parseInt(h.BlackCzeElo) || null : null,
       h.WhiteTeam || null,
       h.BlackTeam || null,
       h.WhiteFideId || null,

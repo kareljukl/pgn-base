@@ -25,6 +25,10 @@ type Game = {
   black: string | null;
   white_elo: number | null;
   black_elo: number | null;
+  white_fide_elo: number | null;
+  black_fide_elo: number | null;
+  white_cze_elo: number | null;
+  black_cze_elo: number | null;
   white_team: string | null;
   black_team: string | null;
   white_fide_id: string | null;

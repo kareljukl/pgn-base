@@ -8,6 +8,10 @@ type GameRow = {
   black: string | null;
   white_elo: number | null;
   black_elo: number | null;
+  white_fide_elo: number | null;
+  black_fide_elo: number | null;
+  white_cze_elo: number | null;
+  black_cze_elo: number | null;
   white_team: string | null;
   black_team: string | null;
   white_fide_id: string | null;
@@ -41,6 +45,10 @@ export function buildPgn(game: GameRow, mode: 'full' | 'stripped'): string {
   // Optional tags
   if (game.white_elo) addTag('WhiteElo', game.white_elo);
   if (game.black_elo) addTag('BlackElo', game.black_elo);
+  if (game.white_fide_elo) addTag('WhiteFideElo', game.white_fide_elo);
+  if (game.black_fide_elo) addTag('BlackFideElo', game.black_fide_elo);
+  if (game.white_cze_elo) addTag('WhiteCzeElo', game.white_cze_elo);
+  if (game.black_cze_elo) addTag('BlackCzeElo', game.black_cze_elo);
   if (game.white_fide_id) addTag('WhiteFideId', game.white_fide_id);
   if (game.black_fide_id) addTag('BlackFideId', game.black_fide_id);
   if (game.white_cze_id) addTag('WhiteCzeId', game.white_cze_id);
