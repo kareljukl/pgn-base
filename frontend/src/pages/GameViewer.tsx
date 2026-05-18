@@ -109,6 +109,7 @@ export function GameViewer() {
   const [cleanedMovesPgn, setCleanedMovesPgn] = useState<string | null>(null);
   const [cleanupSummary, setCleanupSummary] = useState<string | null>(null);
   const [pathBeforeCleanup, setPathBeforeCleanup] = useState<number[] | null>(null);
+  const [orientation, setOrientation] = useState<'white' | 'black'>('white');
 
   const handleBestMove = useCallback((uci: string | null) => {
     setBestMoveArrow(uci ? { orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: 'green' } as DrawShape : null);
@@ -436,14 +437,15 @@ export function GameViewer() {
       <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
         {/* Left column: Board + controls + analysis */}
         <div style={{ flex: '0 0 auto', width: 'min(480px, 100%)' }}>
-          <Board fen={currentFen} lastMove={lastMove} autoShapes={allShapes} />
+          <Board fen={currentFen} orientation={orientation} lastMove={lastMove} autoShapes={allShapes} />
 
           {/* Navigation buttons */}
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', justifyContent: 'center', alignItems: 'center' }}>
             <NavButton onClick={goToStart} label="|◀" title="Na začátek (Home)" />
             <NavButton onClick={goBack} label="◀" title="Zpět (←)" />
             <NavButton onClick={goForward} label="▶" title="Vpřed (→)" />
             <NavButton onClick={goToEnd} label="▶|" title="Na konec (End)" />
+            <NavButton onClick={() => setOrientation((o) => (o === 'white' ? 'black' : 'white'))} label="⇅" title="Otočit šachovnici" />
           </div>
 
           {/* Analysis (cloud + Stockfish fallback) */}

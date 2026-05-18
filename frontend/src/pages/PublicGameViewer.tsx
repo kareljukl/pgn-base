@@ -70,6 +70,7 @@ export function PublicGameViewer() {
     info,
   } = useGameStore();
   const [bestMoveArrow, setBestMoveArrow] = useState<DrawShape | null>(null);
+  const [orientation, setOrientation] = useState<'white' | 'black'>('white');
   const [variantArrowsOn] = useVariantArrowsToggle();
   const variantArrows = useMemo(
     () => (variantArrowsOn ? buildVariantArrows(tree, path, currentFen) : []),
@@ -166,8 +167,8 @@ export function PublicGameViewer() {
 
       <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
         <div style={{ flex: '0 0 auto', width: 'min(480px, 100%)' }}>
-          <Board fen={currentFen} lastMove={lastMove} autoShapes={allShapes} />
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', justifyContent: 'center' }}>
+          <Board fen={currentFen} orientation={orientation} lastMove={lastMove} autoShapes={allShapes} />
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', justifyContent: 'center', alignItems: 'center' }}>
             {(['|◀', '◀', '▶', '▶|'] as const).map((label, i) => (
               <button
                 key={label}
@@ -177,6 +178,13 @@ export function PublicGameViewer() {
                 {label}
               </button>
             ))}
+            <button
+              onClick={() => setOrientation((o) => (o === 'white' ? 'black' : 'white'))}
+              title="Otočit šachovnici"
+              style={{ padding: '0.5rem 1rem', fontSize: '1.1rem', cursor: 'pointer', border: '1px solid #ddd', borderRadius: 4, background: '#fff', minWidth: 44 }}
+            >
+              ⇅
+            </button>
           </div>
           <Analysis fen={currentFen} onBestMove={handleBestMove} />
         </div>

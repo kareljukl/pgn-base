@@ -8,6 +8,7 @@ import { Chess } from 'chess.js';
 type Props = {
   fen: string;
   editable: boolean;
+  orientation?: 'white' | 'black';
   lastMove?: [string, string];
   onMove: (san: string, fen: string) => void;
   autoShapes?: DrawShape[];
@@ -26,7 +27,7 @@ const PROMO_PIECES: Array<{ key: 'q' | 'r' | 'b' | 'n'; label: string }> = [
   { key: 'n', label: '♞' },
 ];
 
-export function EditableBoard({ fen, editable, lastMove, onMove, autoShapes }: Props) {
+export function EditableBoard({ fen, editable, orientation = 'white', lastMove, onMove, autoShapes }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
   const cgRef = useRef<Api | null>(null);
@@ -104,6 +105,7 @@ export function EditableBoard({ fen, editable, lastMove, onMove, autoShapes }: P
     cgRef.current = Chessground(boardRef.current, {
       fen: fenRef.current,
       turnColor: turn,
+      orientation,
       coordinates: true,
       animation: { enabled: true, duration: 200 },
       movable: {
@@ -139,6 +141,7 @@ export function EditableBoard({ fen, editable, lastMove, onMove, autoShapes }: P
     cgRef.current.set({
       fen,
       turnColor: turn,
+      orientation,
       lastMove: lastMove as [Key, Key] | undefined,
       movable: {
         free: false,
@@ -147,7 +150,7 @@ export function EditableBoard({ fen, editable, lastMove, onMove, autoShapes }: P
       },
       viewOnly: !editable,
     });
-  }, [ready, fen, editable, lastMove]);
+  }, [ready, fen, editable, lastMove, orientation]);
 
   useEffect(() => {
     if (size > 0) cgRef.current?.redrawAll();

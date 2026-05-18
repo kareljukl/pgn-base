@@ -77,6 +77,7 @@ export function GameEditor() {
   const [autoResultNote, setAutoResultNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [bestMoveArrow, setBestMoveArrow] = useState<DrawShape | null>(null);
+  const [orientation, setOrientation] = useState<'white' | 'black'>('white');
   const draftLoaded = useRef(false);
   const initFromGameDone = useRef(false);
 
@@ -475,15 +476,17 @@ export function GameEditor() {
           <EditableBoard
             fen={boardFen}
             editable={!pending && !replaceConfirm}
+            orientation={orientation}
             lastMove={boardLastMove}
             onMove={handleBoardMove}
             autoShapes={bestMoveArrow ? [bestMoveArrow] : []}
           />
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', justifyContent: 'center', alignItems: 'center' }}>
             <NavButton onClick={() => setCursor(-1)} disabled={cursor === -1 || navLocked} label="|◀" title="Na začátek (Home)" />
             <NavButton onClick={() => setCursor((c) => Math.max(-1, c - 1))} disabled={cursor === -1 || navLocked} label="◀" title="Zpět (←)" />
             <NavButton onClick={() => setCursor((c) => Math.min(moves.length - 1, c + 1))} disabled={atEnd || navLocked} label="▶" title="Vpřed (→)" />
             <NavButton onClick={() => setCursor(moves.length - 1)} disabled={atEnd || navLocked} label="▶|" title="Na konec (End)" />
+            <NavButton onClick={() => setOrientation((o) => (o === 'white' ? 'black' : 'white'))} label="⇅" title="Otočit šachovnici" />
           </div>
           {pending && <ReplaceMoveInline onChoice={handleReplaceChoice} />}
           <Analysis fen={boardFen} onBestMove={handleBestMove} />
