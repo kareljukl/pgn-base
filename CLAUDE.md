@@ -22,7 +22,7 @@ npm run db:seed      # Insert test data (dev user + 3 sample games)
 npm run db:reset     # init + seed combined
 ```
 
-Secrets for local dev are in `backend/.dev.vars` (gitignored). Required vars: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `JWT_SECRET`, `FRONTEND_URL`, `LICHESS_TOKEN`.
+Secrets for local dev are in `backend/.dev.vars` (gitignored). Required vars: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `JWT_SECRET`, `FRONTEND_URL`, `LICHESS_TOKEN`. (`api.chess.cz` is anonymous, no token.)
 
 **Note:** After changing `database_id` in `wrangler.toml`, the local D1 SQLite file changes. Run `npm run db:reset` to recreate local data.
 
@@ -71,11 +71,14 @@ Frontend routes (`App.tsx`):
 Backend routes (all under `/api/v1/`):
 - `auth/*` — login, callback, me, dev-login, logout
 - `databases` — list/create/update/delete user's databases
-- `databases/:dbId/games` — GET list, POST batch import (returns `{ imported, ids }`)
+- `databases/:dbId/games` — GET list (filter/sort/paginate, optional `includeMoves=true`, `limit` up to 1000), POST batch import (returns `{ imported, ids }`)
 - `databases/:dbId/games/:gameId` — GET / PATCH (headers + optional `movesPgn`) / DELETE
+- `databases/:dbId/games/bulk-update` — POST array of `{ gameId, headers, movesPgn? }` (atomic D1 batch); used by DatabaseDetail bulk diacritics / cleanup
 - `databases/:dbId/games/:gameId/export` and `databases/:dbId/export` — PGN download
 - `public/databases/*` — read-only mirror for public DBs
 - `explorer` — Lichess Masters API proxy (requires `LICHESS_TOKEN`)
+- `chesscz/search?q=...` — debounced player autocomplete proxy to `api.chess.cz/api/members/name` (auth required, D1 cache + atomic rate limit)
+- `chesscz/player/cze/:czeId` and `chesscz/player/fide/:fideId` — single-player lookup / refresh; `?refresh=true` bypasses 30-day cache
 
 ## Architecture
 
@@ -85,42 +88,48 @@ Two separate npm projects: `backend/` and `frontend/`. Vite proxies `/api` to th
 - **Hono** app with typed bindings (`types.ts: AppEnv`) — D1 database binding is `DB`
 - `routes/auth.ts` — Google OAuth flow + JWT (HMAC-SHA256). In production: token returned via URL hash redirect (`/login#token=JWT`), stored in localStorage. In dev: cookie-based. Dev-login bypass returns token in response body.
 - `routes/databases.ts` — CRUD for user's databases (auth required)
-- `routes/games.ts` — game import (POST batch, max 1000, returns inserted IDs), list with filtering/sorting/pagination, single game, **PATCH for header + movetext updates**, delete, PGN export. PATCH body: `{ headers: Record<string,string>, movesPgn?: string }` — when `movesPgn` is provided, also updates `moves_pgn` and recomputes `ply_count` via `countPlies()`.
+- `routes/games.ts` — game import (POST batch, max 1000, returns inserted IDs), list with filtering/sorting/pagination + optional `includeMoves=true`, single game, **PATCH for header + movetext updates**, delete, PGN export, **`POST /:dbId/games/bulk-update`** (atomic D1 batch for bulk diacritics / cleanup). PATCH body: `{ headers: Record<string,string>, movesPgn?: string }` — when `movesPgn` is provided, also updates `moves_pgn` and recomputes `ply_count` via `countPlies()`. All write paths bind 21 PGN-tag columns including `white_fide_elo`/`black_fide_elo`/`white_cze_elo`/`black_cze_elo`.
 - `routes/public.ts` — read-only mirror of games/databases endpoints for public databases (no auth)
 - `routes/explorer.ts` — proxy to Lichess Masters explorer (returns `opening.eco`/`opening.name` plus move statistics)
+- `routes/chesscz.ts` — proxy to ŠSČR `api.chess.cz/api` (`/members/name` search + `/members/{id}/cze|fide` detail). Three D1-backed layers: `chesscz_search` query cache (7-day TTL), `chesscz_player` record cache (30-day TTL), `chesscz_rate` atomic rate-limit gate (10 s min gap, wait-and-retry up to 12 s before 429; on `fetch` timeout sets `blocked_until = now + 1 h`). Search responses are normalized (single object vs array) and per-player records are trimmed + upserted; the search cache stores ordered `cze_id` arrays.
 - `middleware/auth.ts` — checks `Authorization: Bearer` header first, then cookie fallback. Loads user from D1, sets `c.get('user')`
 - `lib/jwt.ts` — JWT sign/verify using Web Crypto API (no external deps)
-- `lib/pgn.ts` — `buildPgn()` assembles PGN from DB row (all 17 header columns + ply count + movetext), `stripMoveText()` removes comments/variations/NAGs, `countPlies()` counts half-moves via SAN regex
+- `lib/pgn.ts` — `buildPgn()` assembles PGN from DB row (21 header columns including the three Elo variants + ply count + movetext), `stripMoveText()` removes comments/variations/NAGs, `countPlies()` counts half-moves via SAN regex
 
 All API routes are under `/api/v1/`. Games routes are mounted on `/api/v1/databases` alongside database routes (via `/:dbId/games` patterns).
 
 ### Frontend (`frontend/src/`)
 
 **Pages:**
-- `Login.tsx`, `Databases.tsx`, `DatabaseDetail.tsx`
-- `GameViewer.tsx` — playback + editable header panel ("Hlavička" toggle) + "Upravit partii" button to enter editor. Both toggle buttons disable while header panel is dirty.
-- `GameEditor.tsx` — dual-mode (create / edit) editor. Mode detected from presence of `gameId` route param. Tracks `initialMoves` / `initialHeaders` to derive `movesDirty` / `headersDirty`; Save disabled when nothing changed, Discard confirm message branches on what's dirty. Edit mode fetches existing game (shares `['game', id, gameId]` query cache with GameViewer) and parses `moves_pgn` via `parseMoveText` (main line only).
-- `PublicDatabases.tsx`, `PublicDatabase.tsx`, `PublicGameViewer.tsx` — public read-only mirror. Sidebar navigation works in both authenticated and public viewers via router state.
+- `Login.tsx`, `Databases.tsx`, `DatabaseDetail.tsx` (with bulk diacritics / Vyčisti PGN refused-row highlight, double-confirm for multi-page filters)
+- `GameViewer.tsx` — playback + editable header panel ("Upravit hlavičku") + "Upravit tahy" button to enter editor (disabled when tree has any variation) + per-game cleanup actions (Odstranění diakritiky, Vyčisti PGN) + board flip button (⇅) in nav row.
+- `GameEditor.tsx` — dual-mode (create / edit) editor. Mode detected from presence of `gameId` route param. Tracks `initialMoves` / `initialHeaders` to derive `movesDirty` / `headersDirty`; Save disabled when nothing changed, Discard confirm message branches on what's dirty. Edit mode fetches existing game (shares `['game', id, gameId]` query cache with GameViewer) and parses `moves_pgn` via `parseMoveText` (main line only). Board flip button under board.
+- `PublicDatabases.tsx`, `PublicDatabase.tsx`, `PublicGameViewer.tsx` — public read-only mirror. Sidebar navigation works in both authenticated and public viewers via router state; board flip button under board.
 
 **Components:**
-- `components/Board/Board.tsx` — read-only Chessground (used in GameViewer, PublicGameViewer, ReplaceConfirmModal mini-board). Optional `autoShapes` prop for engine arrow rendering.
-- `components/Board/EditableBoard.tsx` — interactive Chessground for the editor with chess.js move validation, promotion dialog, and `autoShapes` support. `drawable.enabled: true` (allows engine arrows + user-drawn shapes on right-click).
-- `components/GameEditor/` — `HeaderForm` (15-field PGN tag form, reused by both editor and GameViewer's Hlavička panel), `EditorMoveList`, `ReplaceMoveDialog` (inline + confirm modal with mini-board), `RestoreDraftDialog`.
-- `components/Analysis/Analysis.tsx` — Stockfish panel with MultiPV (1–5), engine toggle, depth select, "Šipky" toggle. Rendered in GameViewer, PublicGameViewer, and GameEditor (both modes).
+- `components/Layout.tsx` — app header with the `SanFormatToggle` (PGN / Cze / ♞) sitting between nav and user block.
+- `components/SanFormatToggle.tsx` — global 3-state selector for SAN display mode, persisted in localStorage `pgn-base-san-format`. Default `PGN` (English chess.js output).
+- `components/Board/Board.tsx` — read-only Chessground (used in GameViewer, PublicGameViewer, ReplaceConfirmModal mini-board). Accepts `orientation`, `lastMove`, `autoShapes`.
+- `components/Board/EditableBoard.tsx` — interactive Chessground for the editor with chess.js move validation, promotion dialog, `orientation`, and `autoShapes` support. `drawable.enabled: true` (allows engine arrows + user-drawn shapes on right-click).
+- `components/GameEditor/` — `HeaderForm` (21-field PGN tag form with `PlayerAutocomplete` for `White`/`Black` and ⟳ refresh icons next to `WhiteCzeId`/`BlackCzeId`, reused by both editor and GameViewer's header panel), `PlayerAutocomplete` (debounced ŠSČR dropdown), `EditorMoveList`, `ReplaceMoveDialog` (inline + confirm modal with mini-board), `RestoreDraftDialog`.
+- `components/Analysis/Analysis.tsx` — single "Analýza" box that merges Lichess Cloud Eval and local Stockfish. **Cloud has priority**: when `/cloud-eval` has data, displayed PVs come from the cloud and the local engine stays paused (`stopAnalysis()`); on cache miss the engine resumes if enabled. Best-move arrow follows whichever source is currently rendered. Source label in the header (`Lichess cloud · d{N}` vs `Stockfish 18 · d{N}`). MultiPV (1–5) bounds rows from both sources; depth slider applies only to local engine. Rendered in GameViewer, PublicGameViewer, and GameEditor.
 - `components/OpeningBook/OpeningBook.tsx` — Lichess Masters move statistics, gated by an ON/OFF toggle persisted in localStorage.
-- `components/OpeningExplorer/OpeningExplorer.tsx` — Lichess Cloud Eval display.
 - `components/ImportDialog.tsx` — PGN file/text import.
 
 **Libs / hooks:**
 - **Auth** (`lib/auth.ts`, `hooks/useAuth.ts`) — token stored in localStorage. In production, OAuth callback redirects to `/login#token=JWT`, Login page reads it from hash. All API requests include `Authorization: Bearer` header.
 - **API client** (`lib/api.ts`) — `API_ORIGIN` switches between empty string (dev, via Vite proxy) and workers.dev URL (prod). Methods: `get`, `post`, `patch`, `delete`.
 - **Custom PGN parser** (`lib/moveTree.ts`) — tokenizer + recursive descent parser producing a tree of `MoveNode[]` with FEN at each node. Supports nested variations `()`, comments `{}`, NAG symbols `$N`, inline annotations (`Nf3!`). Uses chess.js for move validation and FEN generation. Editor parses moves linearly (main line only) by reading `tree.moves`.
-- **Editor PGN helpers** (`lib/editorPgn.ts`) — `EditorHeaders` type (15 fields), `emptyHeaders`, `headersFromGameRow`, `headersEqual`, `toApiHeaders`, `buildEditorMovesPgn`.
+- **UCI → SAN** (`lib/uciToSan.ts`) — `uciSequenceToSan(fen, uciMoves)` replays UCI through chess.js, returning SAN per ply. Shared by `useStockfish` and `useCloudEval`.
+- **SAN format** (`lib/sanFormat.tsx`) — `formatSan(san, mode)` returns `ReactNode`. `'en'` returns the input, `'cs'` substitutes Czech piece letters (K/D/V/S/J + `=X`), `'fig'` wraps the first letter (and any promotion piece) in a styled `<span>` with filled Unicode glyphs `♚♛♜♝♞` at `font-size: 1.4em`, slight vertical-align tweak. Used in `MoveList`, `Analysis` PvLine, `OpeningBook`, `EditorMoveList`.
+- **SAN format hook** (`hooks/useSanFormat.ts`) — `useSyncExternalStore` + localStorage `pgn-base-san-format`, mirrors the `useVariantArrowsToggle.ts` pattern.
+- **Editor PGN helpers** (`lib/editorPgn.ts`) — `EditorHeaders` type (21 fields including `WhiteFideElo`/`WhiteCzeElo`/`BlackFideElo`/`BlackCzeElo`), `emptyHeaders`, `headersFromGameRow`, `headersEqual`, `toApiHeaders`, `buildEditorMovesPgn`.
 - **Zustand store** (`store/gameStore.ts`) — holds the move tree + current path. Path is `number[]`: `[moveIdx]` for main line, `[moveIdx, varIdx, moveIdx, ...]` for variations. Used by viewers (read-only); GameEditor maintains its own linear `moves` + `fens` + `cursor` state.
-- **Chessground** board — requires explicit pixel dimensions (uses ResizeObserver). CSS imported in `main.tsx`. Drag cursor offset is fixed by clearing chessground's cached bounds on `mousedown`/`touchstart` capture in `EditableBoard`.
-- **Stockfish** (`hooks/useStockfish.ts`) — in dev loads from `/public`, in production loads from unpkg CDN (`unpkg.com/stockfish@18.0.7/bin`). UCI protocol over postMessage. WASM files are gitignored. Tracks per-MultiPV evaluations in a `Map<index, eval>`, converts UCI PV to SAN via chess.js, persists settings (`multiPV`, `depth`, `arrows`) in `localStorage` under `pgn-base-engine-settings`.
-- **Lichess Cloud Eval** (`hooks/useOpeningExplorer.ts`) — proxied through Vite in dev (`/lichess-explorer` → `lichess.org/api`), direct in production. Uses `/api/cloud-eval` (the public Masters API at `explorer.lichess.ovh` returns 401, so the backend `routes/explorer.ts` uses the authenticated Masters endpoint with `LICHESS_TOKEN`).
+- **Chessground** board — requires explicit pixel dimensions (uses ResizeObserver). CSS imported in `main.tsx`. Drag cursor offset is fixed by clearing chessground's cached bounds on `mousedown`/`touchstart` capture in `EditableBoard`. Board orientation lives as `useState<'white'|'black'>('white')` per page mount; flip button toggles it.
+- **Stockfish** (`hooks/useStockfish.ts`) — in dev loads from `/public`, in production loads from unpkg CDN (`unpkg.com/stockfish@18.0.7/bin`). UCI protocol over postMessage. WASM files are gitignored. Tracks per-MultiPV evaluations in a `Map<index, eval>`, converts UCI PV to SAN via the shared `uciToSan` helper, persists settings (`multiPV`, `depth`, `arrows`) in `localStorage` under `pgn-base-engine-settings`. **Analysis component pauses the engine** (`stopAnalysis()`) whenever cloud eval has data for the current FEN and resumes (`startAnalysis(fen)`) on cache miss.
+- **Lichess Cloud Eval** (`hooks/useCloudEval.ts`) — proxied through Vite in dev (`/lichess-explorer` → `lichess.org/api`), direct in production. Returns full SAN PVs (up to 10 plies) via `uciSequenceToSan`, plus depth/staleness. Consumed only by `Analysis.tsx`.
 - **Editor ECO** (`hooks/useEditorEco.ts`) — sticky last-known ECO from `/api/v1/explorer`, debounce 300 ms. Used by GameEditor's header form.
+- **ŠSČR autocomplete** (`hooks/useChessczSearch.ts`) — `useDebounced` (1 s, "no-keystroke" condition) + `useChessczSearch(rawQuery)` returning `{ data, isFetching, error, debouncedQuery }`. Fires only when `query.trim().length >= 4`. React Query cache: staleTime 5 min, gcTime 30 min. `fetchPlayerByCzeId(id, refresh)` and `fetchPlayerByFideId(id, refresh)` for the explicit refresh path. Backend handles all rate limiting; frontend only debounces.
 - **GameViewer sidebar** — when navigating from DatabaseDetail, router state passes query context (`filter`, `sort`, `order`, `dbId`, `dbName`). Sidebar fetches its own game list from API with same parameters and independent pagination.
 - **TanStack Query** for all API calls. Shared cache keys: `['game', id, gameId]` (single game), `['games', id]` (DatabaseDetail list), `['sidebar-games', dbId]` (viewer sidebar). After PATCH/POST/DELETE, mutations invalidate all three so GameViewer, sidebar, and list refresh together.
 - **React Router v6** for routing.
@@ -128,7 +137,13 @@ All API routes are under `/api/v1/`. Games routes are mounted on `/api/v1/databa
 **Drafts:** Editor autosaves every minute to localStorage. Keys: `pgn-base-draft-${dbId}` (create mode) / `pgn-base-draft-edit-${gameId}` (edit mode). Restored via `RestoreDraftDialog` on next mount.
 
 ### Database schema (D1/SQLite)
-Three tables: `users`, `databases`, `games`. The `games` table stores all PGN headers as typed columns (for filtering/sorting): `event`, `site`, `date`, `round`, `board`, `white`, `black`, `white_elo`, `black_elo`, `white_team`, `black_team`, `white_fide_id`, `black_fide_id`, `white_cze_id`, `black_cze_id`, `result`, `eco`, `ply_count` (computed from movetext on insert/update), plus `moves_pgn` for the raw movetext. See `backend/src/db/schema.sql`.
+Six tables: `users`, `databases`, `games` + `chesscz_player`, `chesscz_search`, `chesscz_rate`.
+
+The `games` table stores all PGN headers as typed columns (for filtering/sorting): `event`, `site`, `date`, `round`, `board`, `white`, `black`, `white_elo`, `black_elo`, `white_fide_elo`, `black_fide_elo`, `white_cze_elo`, `black_cze_elo`, `white_team`, `black_team`, `white_fide_id`, `black_fide_id`, `white_cze_id`, `black_cze_id`, `result`, `eco`, `ply_count` (computed from movetext on insert/update), plus `moves_pgn` for the raw movetext.
+
+The `chesscz_*` tables back the ŠSČR autocomplete proxy: `chesscz_player` (cze_id PK, full Member fields, `fetched_at`), `chesscz_search` (query_norm PK → JSON `result_ids` of cze_ids, `fetched_at`), `chesscz_rate` (single row id=1 with `last_fetch_at` and `blocked_until` for the atomic rate-limit gate).
+
+See `backend/src/db/schema.sql`.
 
 ## Key Design Decisions
 - PGN movetext is stored as raw text, parsed on the frontend only when viewing. No server-side move validation. Backend only computes `ply_count` via SAN regex on insert/update.
@@ -142,13 +157,23 @@ Three tables: `users`, `databases`, `games`. The `games` table stores all PGN he
 - GameEditor is a single component handling both `create` and `edit` modes — distinguished by presence of `:gameId` route param. Shares HeaderForm, draft autosave, ECO sticky, Stockfish, OpeningBook, and replace-move logic.
 - Dirty state in GameEditor is tracked per-section (`movesDirty` vs `headersDirty`) against `initialMoves` / `initialHeaders` baseline. Drives the Discard confirm wording and disables Save when nothing has changed.
 - GoatCounter analytics snippet in `index.html` (`<script data-goatcounter=...>`) — counts visits anonymously.
+- **SAN localization is display-only.** All storage (`moves_pgn` in D1, PGN export, chess.js internal SAN) stays English. `formatSan(san, mode)` transforms at render-time only — never round-tripped.
+- **Cloud eval has priority over local Stockfish.** Single Analysis box, cloud data wins when present; local engine fills cache misses to keep CPU low for opening theory.
+- **`api.chess.cz` is brittle** — ~3 req/min before IP block (manifests as `connect timeout`, not 429, hours-long). Backend handles all proxying with a D1-atomic rate-limit gate (10 s min gap, server-side wait-and-retry up to 12 s) plus 7-day search cache and 30-day player cache. Frontend debounces 1 s and never calls `api.chess.cz` directly.
+- **Team field semantics.** `WhiteTeam` / `BlackTeam` is auto-filled from `clubName` for individual events. Future team-tournament flow will overwrite with `teamName` from the league `/competitions` rozpis (not implemented yet — see memory entry `project_team_field`).
+- **Board orientation is local per page mount.** Resets to white when navigating to a new game; explicit flip button (⇅) toggles per session.
 
 ## Feature docs
 
 Detailed feature specs live in `docs/`:
 - `feat-game-editor.md` — interactive editor for creating new games (v1)
-- `feat-game-editor-v2.md` — FIDE/ČŠS ID columns and PlyCount tag
+- `feat-game-editor-v2.md` — FIDE/CzeId columns and PlyCount tag
 - `feat-game-edit.md` — editing existing games via shared GameEditor
 - `feat-engine-improvements.md` — MultiPV, SAN PV, board arrows for Stockfish
+- `feat-analysis-merge.md` — single "Analýza" box, cloud-eval priority, engine as fallback
+- `feat-san-localization.md` — PGN / Cze / figurine SAN display toggle in the app header
+- `feat-elo-variants.md` — `WhiteFideElo`/`WhiteCzeElo` (+ Black) PGN tags and DB columns
+- `feat-chesscz-autocomplete.md` — ŠSČR player autocomplete in HeaderForm + rate-limited backend proxy
+- `feat-board-flip.md` — board orientation toggle under the chessboard
 
 When adding a new feature, write a spec doc here before implementation so future Claude sessions have the context.
