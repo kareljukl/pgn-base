@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
+import { ChessczImportDialog } from '../components/Databases/ChessczImportDialog';
 
 type Database = {
   id: string;
@@ -16,6 +17,7 @@ type Database = {
 export function Databases() {
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
+  const [showChessczImport, setShowChessczImport] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
@@ -56,9 +58,14 @@ export function Databases() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <h1 style={{ margin: 0 }}>Moje databáze</h1>
-        <button onClick={() => setShowCreate(true)} style={btnStyle}>
-          + Nová databáze
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button onClick={() => setShowChessczImport(true)} style={secondaryBtnStyle}>
+            Importovat ze ŠSČR
+          </button>
+          <button onClick={() => setShowCreate(true)} style={btnStyle}>
+            + Nová databáze
+          </button>
+        </div>
       </div>
 
       {showCreate && (
@@ -67,6 +74,10 @@ export function Databases() {
           onCancel={() => setShowCreate(false)}
           error={createMutation.error?.message}
         />
+      )}
+
+      {showChessczImport && (
+        <ChessczImportDialog onClose={() => setShowChessczImport(false)} />
       )}
 
       {databases.length === 0 ? (
@@ -202,6 +213,16 @@ const btnStyle: React.CSSProperties = {
   borderRadius: 4,
   background: '#333',
   color: '#fff',
+};
+
+const secondaryBtnStyle: React.CSSProperties = {
+  padding: '0.5rem 1rem',
+  fontSize: '0.875rem',
+  cursor: 'pointer',
+  border: '1px solid #ccc',
+  borderRadius: 4,
+  background: '#fff',
+  color: '#333',
 };
 
 const smallBtnStyle: React.CSSProperties = {

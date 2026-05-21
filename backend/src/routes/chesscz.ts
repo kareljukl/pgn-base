@@ -7,6 +7,10 @@ const chesscz = new Hono<AppEnv>();
 const MIN_QUERY_LEN = 4;
 const SEARCH_TTL_MS = 7 * 24 * 3600 * 1000;
 const PLAYER_TTL_MS = 30 * 24 * 3600 * 1000;
+const COMP_DETAILS_TTL_MS = 24 * 3600 * 1000;
+const COMP_TABLE_TTL_MS = 3600 * 1000;
+const COMP_SCHEDULE_TTL_MS = 24 * 3600 * 1000;
+const COMP_MATCHES_TTL_MS = 30 * 60 * 1000;
 const RATE_MIN_GAP_MS = 10_000;
 const MAX_WAIT_FOR_SLOT_MS = 12_000;
 const BLOCK_DURATION_MS = 3_600_000;
@@ -362,6 +366,194 @@ chesscz.get('/player/fide/:fideId', authRequired, async (c) => {
   const refresh = c.req.query('refresh') === 'true';
   const r = await getOrFetchPlayer(c.env.DB, 'fide', id, refresh);
   return c.json(r.body, r.status as 200 | 400 | 401 | 404 | 429 | 502 | 503);
+});
+
+type CacheRow = { payload: string; fetched_at: number };
+
+type CachedResult = {
+  status: number;
+  body: Record<string, unknown>;
+};
+
+async function readCache(db: D1Database, key: string): Promise<CacheRow | null> {
+  const row = await db
+    .prepare('SELECT payload, fetched_at FROM chesscz_cache WHERE cache_key = ?')
+    .bind(key)
+    .first<CacheRow>();
+  return row ?? null;
+}
+
+async function writeCache(
+  db: D1Database,
+  key: string,
+  payload: unknown,
+  ttlMs: number,
+  fetchedAt: number
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO chesscz_cache (cache_key, payload, ttl_ms, fetched_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(cache_key) DO UPDATE SET
+         payload = excluded.payload,
+         ttl_ms = excluded.ttl_ms,
+         fetched_at = excluded.fetched_at`
+    )
+    .bind(key, JSON.stringify(payload), ttlMs, fetchedAt)
+    .run();
+}
+
+async function cachedFetchSscr(
+  db: D1Database,
+  cacheKey: string,
+  path: string,
+  ttlMs: number
+): Promise<CachedResult> {
+  const now = Date.now();
+  const cached = await readCache(db, cacheKey);
+
+  if (cached && now - cached.fetched_at < ttlMs) {
+    return {
+      status: 200,
+      body: { data: JSON.parse(cached.payload), fetchedAt: cached.fetched_at, stale: false },
+    };
+  }
+
+  const slot = await acquireSlotWithWait(db);
+  if (slot === 'blocked') {
+    if (cached) {
+      return {
+        status: 200,
+        body: { data: JSON.parse(cached.payload), fetchedAt: cached.fetched_at, stale: true },
+      };
+    }
+    return { status: 503, body: { error: 'ŠSČR dočasně nedostupné' } };
+  }
+  if (slot === 'throttled') {
+    if (cached) {
+      return {
+        status: 200,
+        body: { data: JSON.parse(cached.payload), fetchedAt: cached.fetched_at, stale: true },
+      };
+    }
+    return { status: 429, body: { error: 'Vyhledávání právě probíhá, zkus za chvíli' } };
+  }
+
+  let data: unknown;
+  try {
+    data = await fetchSscr(path);
+  } catch (e) {
+    const name = (e as Error)?.name;
+    if (name === 'TimeoutError' || name === 'AbortError') {
+      await markBlocked(db);
+      if (cached) {
+        return {
+          status: 200,
+          body: { data: JSON.parse(cached.payload), fetchedAt: cached.fetched_at, stale: true },
+        };
+      }
+      return { status: 503, body: { error: 'ŠSČR timeout' } };
+    }
+    if (cached) {
+      return {
+        status: 200,
+        body: { data: JSON.parse(cached.payload), fetchedAt: cached.fetched_at, stale: true },
+      };
+    }
+    return { status: 502, body: { error: 'Chyba volání ŠSČR' } };
+  }
+
+  await writeCache(db, cacheKey, data, ttlMs, now);
+  return { status: 200, body: { data, fetchedAt: now, stale: false } };
+}
+
+function parseIdParam(v: string): number | null {
+  const n = parseInt(v, 10);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
+// GET /competitions/:compId/details
+chesscz.get('/competitions/:compId/details', authRequired, async (c) => {
+  const compId = parseIdParam(c.req.param('compId'));
+  if (compId === null) return c.json({ error: 'Neplatné compId' }, 400);
+  const r = await cachedFetchSscr(
+    c.env.DB,
+    `comp:${compId}:details`,
+    `/competitions/${compId}/details`,
+    COMP_DETAILS_TTL_MS
+  );
+  return c.json(r.body, r.status as 200 | 400 | 401 | 429 | 502 | 503);
+});
+
+// GET /competitions/:compId/table
+chesscz.get('/competitions/:compId/table', authRequired, async (c) => {
+  const compId = parseIdParam(c.req.param('compId'));
+  if (compId === null) return c.json({ error: 'Neplatné compId' }, 400);
+  const r = await cachedFetchSscr(
+    c.env.DB,
+    `comp:${compId}:table`,
+    `/competitions/${compId}/table`,
+    COMP_TABLE_TTL_MS
+  );
+  return c.json(r.body, r.status as 200 | 400 | 401 | 429 | 502 | 503);
+});
+
+// GET /competitions/:compId/team/:teamId/schedule
+chesscz.get('/competitions/:compId/team/:teamId/schedule', authRequired, async (c) => {
+  const compId = parseIdParam(c.req.param('compId'));
+  const teamId = parseIdParam(c.req.param('teamId'));
+  if (compId === null) return c.json({ error: 'Neplatné compId' }, 400);
+  if (teamId === null) return c.json({ error: 'Neplatné teamId' }, 400);
+  const r = await cachedFetchSscr(
+    c.env.DB,
+    `comp:${compId}:team:${teamId}:schedule`,
+    `/competitions/${compId}/team/${teamId}/schedule`,
+    COMP_SCHEDULE_TTL_MS
+  );
+  return c.json(r.body, r.status as 200 | 400 | 401 | 429 | 502 | 503);
+});
+
+// GET /competitions/:compId/schedule
+chesscz.get('/competitions/:compId/schedule', authRequired, async (c) => {
+  const compId = parseIdParam(c.req.param('compId'));
+  if (compId === null) return c.json({ error: 'Neplatné compId' }, 400);
+  const r = await cachedFetchSscr(
+    c.env.DB,
+    `comp:${compId}:schedule`,
+    `/competitions/${compId}/schedule`,
+    COMP_SCHEDULE_TTL_MS
+  );
+  return c.json(r.body, r.status as 200 | 400 | 401 | 429 | 502 | 503);
+});
+
+// GET /competitions/:compId/round/:round/schedule
+chesscz.get('/competitions/:compId/round/:round/schedule', authRequired, async (c) => {
+  const compId = parseIdParam(c.req.param('compId'));
+  const round = parseIdParam(c.req.param('round'));
+  if (compId === null) return c.json({ error: 'Neplatné compId' }, 400);
+  if (round === null) return c.json({ error: 'Neplatné kolo' }, 400);
+  const r = await cachedFetchSscr(
+    c.env.DB,
+    `comp:${compId}:round:${round}:schedule`,
+    `/competitions/${compId}/round/${round}/schedule`,
+    COMP_SCHEDULE_TTL_MS
+  );
+  return c.json(r.body, r.status as 200 | 400 | 401 | 429 | 502 | 503);
+});
+
+// GET /competitions/:compId/round/:round/matches
+chesscz.get('/competitions/:compId/round/:round/matches', authRequired, async (c) => {
+  const compId = parseIdParam(c.req.param('compId'));
+  const round = parseIdParam(c.req.param('round'));
+  if (compId === null) return c.json({ error: 'Neplatné compId' }, 400);
+  if (round === null) return c.json({ error: 'Neplatné kolo' }, 400);
+  const r = await cachedFetchSscr(
+    c.env.DB,
+    `comp:${compId}:round:${round}:matches`,
+    `/competitions/${compId}/round/${round}/matches`,
+    COMP_MATCHES_TTL_MS
+  );
+  return c.json(r.body, r.status as 200 | 400 | 401 | 429 | 502 | 503);
 });
 
 export { chesscz };

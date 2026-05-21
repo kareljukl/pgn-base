@@ -1,3 +1,9 @@
+export function getResultColor(result: string | null | undefined): string {
+  if (result === '1-0') return '#16a34a';
+  if (result === '0-1') return '#dc2626';
+  return '#888';
+}
+
 export function removeDiacritics(s: string): string {
   return (s ?? '')
     .normalize('NFD')

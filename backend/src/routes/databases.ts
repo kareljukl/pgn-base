@@ -25,7 +25,15 @@ databases.get('/', authRequired, async (c) => {
 // Create database
 databases.post('/', authRequired, async (c) => {
   const user = c.get('user');
-  const body = await c.req.json<{ name?: string; description?: string }>();
+  const body = await c.req.json<{
+    name?: string;
+    description?: string;
+    import_source?: string;
+    chesscz_comp_id?: number;
+    chesscz_round_nr?: number;
+    chesscz_home_team_id?: number;
+    chesscz_away_team_id?: number;
+  }>();
 
   if (!body.name || body.name.trim().length === 0) {
     return c.json({ error: 'Název je povinný' }, 400);
@@ -44,19 +52,56 @@ databases.post('/', authRequired, async (c) => {
     return c.json({ error: `Maximální počet databází je ${MAX_DATABASES_PER_USER}` }, 400);
   }
 
+  const importSource = body.import_source === 'chesscz' ? 'chesscz' : 'manual';
+  const compId = importSource === 'chesscz' && Number.isFinite(body.chesscz_comp_id) ? body.chesscz_comp_id! : null;
+  const roundNr = importSource === 'chesscz' && Number.isFinite(body.chesscz_round_nr) ? body.chesscz_round_nr! : null;
+  const homeTeamId = importSource === 'chesscz' && Number.isFinite(body.chesscz_home_team_id) ? body.chesscz_home_team_id! : null;
+  const awayTeamId = importSource === 'chesscz' && Number.isFinite(body.chesscz_away_team_id) ? body.chesscz_away_team_id! : null;
+
   const id = crypto.randomUUID();
   const now = Math.floor(Date.now() / 1000);
 
   await c.env.DB.prepare(
-    `INSERT INTO databases (id, owner_id, name, description, is_public, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 0, ?, ?)`
-  ).bind(id, user.id, body.name.trim(), body.description?.trim() || null, now, now).run();
+    `INSERT INTO databases
+       (id, owner_id, name, description, is_public,
+        import_source, chesscz_comp_id, chesscz_round_nr, chesscz_home_team_id, chesscz_away_team_id,
+        created_at, updated_at)
+     VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(
+    id, user.id, body.name.trim(), body.description?.trim() || null,
+    importSource, compId, roundNr, homeTeamId, awayTeamId,
+    now, now
+  ).run();
 
   const db = await c.env.DB.prepare(
     'SELECT * FROM databases WHERE id = ?'
   ).bind(id).first();
 
   return c.json({ database: db }, 201);
+});
+
+// Get single database
+databases.get('/:id', authRequired, async (c) => {
+  const user = c.get('user');
+  const dbId = c.req.param('id');
+
+  const db = await c.env.DB.prepare(
+    `SELECT d.*, COUNT(g.id) as game_count
+     FROM databases d
+     LEFT JOIN games g ON g.database_id = d.id
+     WHERE d.id = ?
+     GROUP BY d.id`
+  ).bind(dbId).first();
+
+  if (!db) {
+    return c.json({ error: 'Databáze nenalezena' }, 404);
+  }
+
+  if (db.owner_id !== user.id) {
+    return c.json({ error: 'Přístup odepřen' }, 403);
+  }
+
+  return c.json({ database: db });
 });
 
 // Update database (rename, description, visibility)

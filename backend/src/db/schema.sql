@@ -8,13 +8,18 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS databases (
-  id          TEXT PRIMARY KEY,
-  owner_id    TEXT NOT NULL REFERENCES users(id),
-  name        TEXT NOT NULL,
-  description TEXT,
-  is_public   INTEGER DEFAULT 0,
-  created_at  INTEGER NOT NULL,
-  updated_at  INTEGER NOT NULL
+  id                    TEXT PRIMARY KEY,
+  owner_id              TEXT NOT NULL REFERENCES users(id),
+  name                  TEXT NOT NULL,
+  description           TEXT,
+  is_public             INTEGER DEFAULT 0,
+  import_source         TEXT DEFAULT 'manual',
+  chesscz_comp_id       INTEGER,
+  chesscz_round_nr      INTEGER,
+  chesscz_home_team_id  INTEGER,
+  chesscz_away_team_id  INTEGER,
+  created_at            INTEGER NOT NULL,
+  updated_at            INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS games (
@@ -81,6 +86,13 @@ CREATE TABLE IF NOT EXISTS chesscz_rate (
   blocked_until   INTEGER NOT NULL DEFAULT 0
 );
 INSERT OR IGNORE INTO chesscz_rate (id, last_fetch_at, blocked_until) VALUES (1, 0, 0);
+
+CREATE TABLE IF NOT EXISTS chesscz_cache (
+  cache_key   TEXT PRIMARY KEY,
+  payload     TEXT NOT NULL,
+  ttl_ms      INTEGER NOT NULL,
+  fetched_at  INTEGER NOT NULL
+);
 
 CREATE INDEX IF NOT EXISTS idx_games_database_id ON games(database_id);
 CREATE INDEX IF NOT EXISTS idx_games_white ON games(white COLLATE NOCASE);

@@ -70,7 +70,8 @@ Frontend routes (`App.tsx`):
 
 Backend routes (all under `/api/v1/`):
 - `auth/*` — login, callback, me, dev-login, logout
-- `databases` — list/create/update/delete user's databases
+- `databases` — list/create/update/delete user's databases (POST accepts optional `import_source` + `chesscz_comp_id` / `chesscz_round_nr` / `chesscz_home_team_id` / `chesscz_away_team_id` for ŠSČR imports)
+- `databases/:id` — GET single database with `game_count` and ŠSČR metadata
 - `databases/:dbId/games` — GET list (filter/sort/paginate, optional `includeMoves=true`, `limit` up to 1000), POST batch import (returns `{ imported, ids }`)
 - `databases/:dbId/games/:gameId` — GET / PATCH (headers + optional `movesPgn`) / DELETE
 - `databases/:dbId/games/bulk-update` — POST array of `{ gameId, headers, movesPgn? }` (atomic D1 batch); used by DatabaseDetail bulk diacritics / cleanup
@@ -79,6 +80,7 @@ Backend routes (all under `/api/v1/`):
 - `explorer` — Lichess Masters API proxy (requires `LICHESS_TOKEN`)
 - `chesscz/search?q=...` — debounced player autocomplete proxy to `api.chess.cz/api/members/name` (auth required, D1 cache + atomic rate limit)
 - `chesscz/player/cze/:czeId` and `chesscz/player/fide/:fideId` — single-player lookup / refresh; `?refresh=true` bypasses 30-day cache
+- `chesscz/competitions/:compId/details` (1 d), `chesscz/competitions/:compId/table` (1 h), `chesscz/competitions/:compId/team/:teamId/schedule` (1 d), `chesscz/competitions/:compId/round/:round/schedule` (1 d), `chesscz/competitions/:compId/round/:round/matches` (30 min) — generic cached ŠSČR proxies backing the UC1 league-match import. Cache lives in `chesscz_cache` (key/payload/ttl/fetched_at). Stale cache is served on rate-limit block / timeout.
 
 ## Architecture
 
@@ -91,7 +93,7 @@ Two separate npm projects: `backend/` and `frontend/`. Vite proxies `/api` to th
 - `routes/games.ts` — game import (POST batch, max 1000, returns inserted IDs), list with filtering/sorting/pagination + optional `includeMoves=true`, single game, **PATCH for header + movetext updates**, delete, PGN export, **`POST /:dbId/games/bulk-update`** (atomic D1 batch for bulk diacritics / cleanup). PATCH body: `{ headers: Record<string,string>, movesPgn?: string }` — when `movesPgn` is provided, also updates `moves_pgn` and recomputes `ply_count` via `countPlies()`. All write paths bind 21 PGN-tag columns including `white_fide_elo`/`black_fide_elo`/`white_cze_elo`/`black_cze_elo`.
 - `routes/public.ts` — read-only mirror of games/databases endpoints for public databases (no auth)
 - `routes/explorer.ts` — proxy to Lichess Masters explorer (returns `opening.eco`/`opening.name` plus move statistics)
-- `routes/chesscz.ts` — proxy to ŠSČR `api.chess.cz/api` (`/members/name` search + `/members/{id}/cze|fide` detail). Three D1-backed layers: `chesscz_search` query cache (7-day TTL), `chesscz_player` record cache (30-day TTL), `chesscz_rate` atomic rate-limit gate (10 s min gap, wait-and-retry up to 12 s before 429; on `fetch` timeout sets `blocked_until = now + 1 h`). Search responses are normalized (single object vs array) and per-player records are trimmed + upserted; the search cache stores ordered `cze_id` arrays.
+- `routes/chesscz.ts` — proxy to ŠSČR `api.chess.cz/api` (`/members/name` search + `/members/{id}/cze|fide` detail + competition endpoints via generic `cachedFetchSscr` helper backed by `chesscz_cache`). Three D1-backed layers: `chesscz_search` query cache (7-day TTL), `chesscz_player` record cache (30-day TTL), `chesscz_rate` atomic rate-limit gate (10 s min gap, wait-and-retry up to 12 s before 429; on `fetch` timeout sets `blocked_until = now + 1 h`). Search responses are normalized (single object vs array) and per-player records are trimmed + upserted; the search cache stores ordered `cze_id` arrays.
 - `middleware/auth.ts` — checks `Authorization: Bearer` header first, then cookie fallback. Loads user from D1, sets `c.get('user')`
 - `lib/jwt.ts` — JWT sign/verify using Web Crypto API (no external deps)
 - `lib/pgn.ts` — `buildPgn()` assembles PGN from DB row (21 header columns including the three Elo variants + ply count + movetext), `stripMoveText()` removes comments/variations/NAGs, `countPlies()` counts half-moves via SAN regex
@@ -101,7 +103,7 @@ All API routes are under `/api/v1/`. Games routes are mounted on `/api/v1/databa
 ### Frontend (`frontend/src/`)
 
 **Pages:**
-- `Login.tsx`, `Databases.tsx`, `DatabaseDetail.tsx` (with bulk diacritics / Vyčisti PGN refused-row highlight, double-confirm for multi-page filters)
+- `Login.tsx`, `Databases.tsx` (offers "+ Nová databáze" plus "Importovat ze ŠSČR" via `ChessczImportDialog`), `DatabaseDetail.tsx` (with bulk diacritics / Vyčisti PGN refused-row highlight, double-confirm for multi-page filters, **"Načíst výsledky"** button when `import_source === 'chesscz'`)
 - `GameViewer.tsx` — playback + editable header panel ("Upravit hlavičku") + "Upravit tahy" button to enter editor (disabled when tree has any variation) + per-game cleanup actions (Odstranění diakritiky, Vyčisti PGN) + board flip button (⇅) in nav row.
 - `GameEditor.tsx` — dual-mode (create / edit) editor. Mode detected from presence of `gameId` route param. Tracks `initialMoves` / `initialHeaders` to derive `movesDirty` / `headersDirty`; Save disabled when nothing changed, Discard confirm message branches on what's dirty. Edit mode fetches existing game (shares `['game', id, gameId]` query cache with GameViewer) and parses `moves_pgn` via `parseMoveText` (main line only). Board flip button under board.
 - `PublicDatabases.tsx`, `PublicDatabase.tsx`, `PublicGameViewer.tsx` — public read-only mirror. Sidebar navigation works in both authenticated and public viewers via router state; board flip button under board.
@@ -115,6 +117,7 @@ All API routes are under `/api/v1/`. Games routes are mounted on `/api/v1/databa
 - `components/Analysis/Analysis.tsx` — single "Analýza" box that merges Lichess Cloud Eval and local Stockfish. **Cloud has priority**: when `/cloud-eval` has data, displayed PVs come from the cloud and the local engine stays paused (`stopAnalysis()`); on cache miss the engine resumes if enabled. Best-move arrow follows whichever source is currently rendered. Source label in the header (`Lichess cloud · d{N}` vs `Stockfish 18 · d{N}`). MultiPV (1–5) bounds rows from both sources; depth slider applies only to local engine. Rendered in GameViewer, PublicGameViewer, and GameEditor.
 - `components/OpeningBook/OpeningBook.tsx` — Lichess Masters move statistics, gated by an ON/OFF toggle persisted in localStorage.
 - `components/ImportDialog.tsx` — PGN file/text import.
+- `components/Databases/ChessczImportDialog.tsx` — 4-step ŠSČR import dialog (compId → team or round → match → confirm). On submit creates database with `import_source='chesscz'` and N placeholder games (8 default, or `matchGames.length` if results are already published). Uses helpers from `lib/chesscz.ts`.
 
 **Libs / hooks:**
 - **Auth** (`lib/auth.ts`, `hooks/useAuth.ts`) — token stored in localStorage. In production, OAuth callback redirects to `/login#token=JWT`, Login page reads it from hash. All API requests include `Authorization: Bearer` header.
@@ -130,6 +133,8 @@ All API routes are under `/api/v1/`. Games routes are mounted on `/api/v1/databa
 - **Lichess Cloud Eval** (`hooks/useCloudEval.ts`) — proxied through Vite in dev (`/lichess-explorer` → `lichess.org/api`), direct in production. Returns full SAN PVs (up to 10 plies) via `uciSequenceToSan`, plus depth/staleness. Consumed only by `Analysis.tsx`.
 - **Editor ECO** (`hooks/useEditorEco.ts`) — sticky last-known ECO from `/api/v1/explorer`, debounce 300 ms. Used by GameEditor's header form.
 - **ŠSČR autocomplete** (`hooks/useChessczSearch.ts`) — `useDebounced` (1 s, "no-keystroke" condition) + `useChessczSearch(rawQuery)` returning `{ data, isFetching, error, debouncedQuery }`. Fires only when `query.trim().length >= 4`. React Query cache: staleTime 5 min, gcTime 30 min. `fetchPlayerByCzeId(id, refresh)` and `fetchPlayerByFideId(id, refresh)` for the explicit refresh path. Backend handles all rate limiting; frontend only debounces.
+- **ŠSČR competition hooks** (`hooks/useChessczCompetition.ts`) — `useChessczDetails`, `useChessczTable`, `useChessczTeamSchedule`, `useChessczRoundSchedule`, `useChessczRoundMatches` over the cached proxy endpoints; `fetchChessczRoundMatches(compId, round)` for imperative use in DatabaseDetail's "Načíst výsledky" handler. All hooks accept `null` ids and gate with `enabled`.
+- **ŠSČR mappers** (`lib/chesscz.ts`) — types matching the OpenAPI shapes, `asArray()` normalizer for the single-object-or-array responses, `formatChessczDate()` (DD.MM.YYYY → YYYY.MM.DD), `buildPlaceholderGames()` (board → home/away alternation + `removeDiacritics`), `boardGameToHeaders()` (BoardGame + match → 21-field PGN header subset including `WhiteCzeId`/`BlackCzeId`), `findMatch()` (filter round matches by home+away team).
 - **GameViewer sidebar** — when navigating from DatabaseDetail, router state passes query context (`filter`, `sort`, `order`, `dbId`, `dbName`). Sidebar fetches its own game list from API with same parameters and independent pagination.
 - **TanStack Query** for all API calls. Shared cache keys: `['game', id, gameId]` (single game), `['games', id]` (DatabaseDetail list), `['sidebar-games', dbId]` (viewer sidebar). After PATCH/POST/DELETE, mutations invalidate all three so GameViewer, sidebar, and list refresh together.
 - **React Router v6** for routing.
@@ -137,11 +142,13 @@ All API routes are under `/api/v1/`. Games routes are mounted on `/api/v1/databa
 **Drafts:** Editor autosaves every minute to localStorage. Keys: `pgn-base-draft-${dbId}` (create mode) / `pgn-base-draft-edit-${gameId}` (edit mode). Restored via `RestoreDraftDialog` on next mount.
 
 ### Database schema (D1/SQLite)
-Six tables: `users`, `databases`, `games` + `chesscz_player`, `chesscz_search`, `chesscz_rate`.
+Seven tables: `users`, `databases`, `games` + `chesscz_player`, `chesscz_search`, `chesscz_rate`, `chesscz_cache`.
 
 The `games` table stores all PGN headers as typed columns (for filtering/sorting): `event`, `site`, `date`, `round`, `board`, `white`, `black`, `white_elo`, `black_elo`, `white_fide_elo`, `black_fide_elo`, `white_cze_elo`, `black_cze_elo`, `white_team`, `black_team`, `white_fide_id`, `black_fide_id`, `white_cze_id`, `black_cze_id`, `result`, `eco`, `ply_count` (computed from movetext on insert/update), plus `moves_pgn` for the raw movetext.
 
-The `chesscz_*` tables back the ŠSČR autocomplete proxy: `chesscz_player` (cze_id PK, full Member fields, `fetched_at`), `chesscz_search` (query_norm PK → JSON `result_ids` of cze_ids, `fetched_at`), `chesscz_rate` (single row id=1 with `last_fetch_at` and `blocked_until` for the atomic rate-limit gate).
+The `databases` table also stores ŠSČR-import metadata: `import_source` ('manual' | 'chesscz'), `chesscz_comp_id`, `chesscz_round_nr`, `chesscz_home_team_id`, `chesscz_away_team_id` (all nullable; populated when DB was created via the ŠSČR import flow).
+
+The `chesscz_*` tables back the ŠSČR proxies: `chesscz_player` (cze_id PK, full Member fields, `fetched_at`), `chesscz_search` (query_norm PK → JSON `result_ids` of cze_ids, `fetched_at`), `chesscz_rate` (single row id=1 with `last_fetch_at` and `blocked_until` for the atomic rate-limit gate), `chesscz_cache` (generic `cache_key`/`payload` JSON/`ttl_ms`/`fetched_at` for the competition/table/schedule/matches endpoints).
 
 See `backend/src/db/schema.sql`.
 
@@ -175,5 +182,6 @@ Detailed feature specs live in `docs/`:
 - `feat-elo-variants.md` — `WhiteFideElo`/`WhiteCzeElo` (+ Black) PGN tags and DB columns
 - `feat-chesscz-autocomplete.md` — ŠSČR player autocomplete in HeaderForm + rate-limited backend proxy
 - `feat-board-flip.md` — board orientation toggle under the chessboard
+- `feat-chesscz-import-uc1.md` — UC1 import of a single league match from ŠSČR (compId → team → match → 8 placeholder games, "Načíst výsledky" button in DatabaseDetail)
 
 When adding a new feature, write a spec doc here before implementation so future Claude sessions have the context.
