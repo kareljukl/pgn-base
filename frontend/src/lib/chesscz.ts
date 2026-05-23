@@ -69,6 +69,17 @@ export type ChessczMatchResult = {
   matchGames: ChessczBoardGame[];
 };
 
+export type ChessczRosterEntry = {
+  rosterPosition: number;
+  playerId: number;
+  playerName: string;
+  playerClass: string | null;
+  playerCzeElo: number;
+  playerFideElo: number;
+  playerFlags: string;
+  playerResults: (number | null)[];
+};
+
 export type ChessczProxyResponse<T> = {
   data: T;
   fetchedAt: number;

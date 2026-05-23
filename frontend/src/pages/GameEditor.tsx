@@ -6,7 +6,7 @@ import type { DrawShape } from 'chessground/draw';
 import { api } from '../lib/api';
 import { EditableBoard } from '../components/Board/EditableBoard';
 import { EditorMoveList } from '../components/GameEditor/EditorMoveList';
-import { HeaderForm } from '../components/GameEditor/HeaderForm';
+import { HeaderForm, type ChessczContext } from '../components/GameEditor/HeaderForm';
 import { ReplaceMoveInline, ReplaceConfirmModal } from '../components/GameEditor/ReplaceMoveDialog';
 import { RestoreDraftDialog } from '../components/GameEditor/RestoreDraftDialog';
 import { OpeningBook } from '../components/OpeningBook/OpeningBook';
@@ -28,6 +28,14 @@ const AUTOSAVE_INTERVAL_MS = 60_000;
 
 type DatabaseInfo = { id: string; name: string };
 type DatabasesResponse = { databases: DatabaseInfo[] };
+
+type DatabaseDetailInfo = {
+  id: string;
+  import_source?: string | null;
+  chesscz_comp_id?: number | null;
+  chesscz_home_team_id?: number | null;
+  chesscz_away_team_id?: number | null;
+};
 
 type GameData = GameRowLike & { id: string; moves_pgn: string };
 
@@ -92,6 +100,23 @@ export function GameEditor() {
     queryFn: () => api.get<DatabasesResponse>('/databases'),
   });
   const dbName = dbList?.databases.find((d) => d.id === id)?.name ?? '';
+
+  const { data: dbDetail } = useQuery({
+    queryKey: ['database', id],
+    queryFn: () => api.get<{ database: DatabaseDetailInfo }>(`/databases/${id}`),
+    enabled: !!id,
+  });
+  const chessczContext: ChessczContext | null =
+    dbDetail?.database.import_source === 'chesscz'
+    && dbDetail.database.chesscz_comp_id
+    && dbDetail.database.chesscz_home_team_id
+    && dbDetail.database.chesscz_away_team_id
+      ? {
+          compId: dbDetail.database.chesscz_comp_id,
+          homeTeamId: dbDetail.database.chesscz_home_team_id,
+          awayTeamId: dbDetail.database.chesscz_away_team_id,
+        }
+      : null;
 
   // Edit mode: fetch existing game
   const { data: gameData, isLoading: gameLoading } = useQuery({
@@ -504,7 +529,13 @@ export function GameEditor() {
           {autoResultNote && (
             <p style={{ color: '#1d4ed8', fontSize: '0.85rem', margin: '-0.25rem 0 0' }}>{autoResultNote}</p>
           )}
-          <HeaderForm headers={headers} onChange={setHeaders} showRequired={showRequired} />
+          <HeaderForm
+            headers={headers}
+            onChange={setHeaders}
+            showRequired={showRequired}
+            initialHeaders={isEdit ? initialHeaders : undefined}
+            chessczContext={chessczContext}
+          />
         </div>
       </div>
 

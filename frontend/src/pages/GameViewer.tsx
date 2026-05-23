@@ -5,7 +5,7 @@ import type { DrawShape } from 'chessground/draw';
 import { api, API_ORIGIN } from '../lib/api';
 import { useGameStore } from '../store/gameStore';
 import { Board } from '../components/Board/Board';
-import { HeaderForm } from '../components/GameEditor/HeaderForm';
+import { HeaderForm, type ChessczContext } from '../components/GameEditor/HeaderForm';
 import {
   emptyHeaders,
   headersFromGameRow,
@@ -47,6 +47,14 @@ type GameData = {
   black_cze_id: string | null;
   eco: string | null;
   moves_pgn: string;
+};
+
+type DatabaseInfo = {
+  id: string;
+  import_source?: string | null;
+  chesscz_comp_id?: number | null;
+  chesscz_home_team_id?: number | null;
+  chesscz_away_team_id?: number | null;
 };
 
 type SidebarGame = {
@@ -126,6 +134,23 @@ export function GameViewer() {
     queryKey: ['game', id, gameId],
     queryFn: () => api.get<{ game: GameData }>(`/databases/${id}/games/${gameId}`),
   });
+
+  const { data: dbInfo } = useQuery({
+    queryKey: ['database', id],
+    queryFn: () => api.get<{ database: DatabaseInfo }>(`/databases/${id}`),
+    enabled: !!id,
+  });
+  const chessczContext: ChessczContext | null =
+    dbInfo?.database.import_source === 'chesscz'
+    && dbInfo.database.chesscz_comp_id
+    && dbInfo.database.chesscz_home_team_id
+    && dbInfo.database.chesscz_away_team_id
+      ? {
+          compId: dbInfo.database.chesscz_comp_id,
+          homeTeamId: dbInfo.database.chesscz_home_team_id,
+          awayTeamId: dbInfo.database.chesscz_away_team_id,
+        }
+      : null;
 
   useEffect(() => {
     if (data?.game) {
@@ -468,6 +493,7 @@ export function GameViewer() {
               onChange={setHeaders}
               showRequired={showRequired}
               initialHeaders={initialHeaders}
+              chessczContext={chessczContext}
             />
           )}
         </div>

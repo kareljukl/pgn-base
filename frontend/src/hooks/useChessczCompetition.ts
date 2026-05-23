@@ -4,6 +4,7 @@ import type {
   ChessczCompDetail,
   ChessczMatchResult,
   ChessczProxyResponse,
+  ChessczRosterEntry,
   ChessczRoundSchedule,
   ChessczTableRow,
   ChessczTeamScheduleEntry,
@@ -34,6 +35,19 @@ export function useChessczTable(compId: number | null) {
       ),
     enabled: compId !== null && compId > 0,
     staleTime: STALE_5_MIN,
+    retry: false,
+  });
+}
+
+export function useChessczRoster(compId: number | null, teamId: number | null) {
+  return useQuery({
+    queryKey: ['chesscz-team-roster', compId, teamId],
+    queryFn: () =>
+      api.get<ChessczProxyResponse<ChessczRosterEntry | ChessczRosterEntry[]>>(
+        `/chesscz/competitions/${compId}/team/${teamId}/roster`
+      ),
+    enabled: compId !== null && compId > 0 && teamId !== null && teamId > 0,
+    staleTime: STALE_30_MIN,
     retry: false,
   });
 }

@@ -541,6 +541,21 @@ chesscz.get('/competitions/:compId/round/:round/schedule', authRequired, async (
   return c.json(r.body, r.status as 200 | 400 | 401 | 429 | 502 | 503);
 });
 
+// GET /competitions/:compId/team/:teamId/roster
+chesscz.get('/competitions/:compId/team/:teamId/roster', authRequired, async (c) => {
+  const compId = parseIdParam(c.req.param('compId'));
+  const teamId = parseIdParam(c.req.param('teamId'));
+  if (compId === null) return c.json({ error: 'Neplatné compId' }, 400);
+  if (teamId === null) return c.json({ error: 'Neplatné teamId' }, 400);
+  const r = await cachedFetchSscr(
+    c.env.DB,
+    `comp:${compId}:team:${teamId}:roster`,
+    `/competitions/${compId}/team/${teamId}/roster`,
+    COMP_SCHEDULE_TTL_MS
+  );
+  return c.json(r.body, r.status as 200 | 400 | 401 | 429 | 502 | 503);
+});
+
 // GET /competitions/:compId/round/:round/matches
 chesscz.get('/competitions/:compId/round/:round/matches', authRequired, async (c) => {
   const compId = parseIdParam(c.req.param('compId'));

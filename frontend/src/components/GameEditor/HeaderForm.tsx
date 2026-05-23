@@ -1,20 +1,30 @@
 import { useState } from 'react';
 import type { EditorHeaders } from '../../lib/editorPgn';
 import { PlayerAutocomplete } from './PlayerAutocomplete';
+import { RosterAutocomplete } from './RosterAutocomplete';
 import { fetchPlayerByCzeId, type PlayerHit } from '../../hooks/useChessczSearch';
+import { useChessczRoster } from '../../hooks/useChessczCompetition';
+import { asArray, type ChessczRosterEntry } from '../../lib/chesscz';
+
+export type ChessczContext = {
+  compId: number;
+  homeTeamId: number;
+  awayTeamId: number;
+};
 
 type Props = {
   headers: EditorHeaders;
   onChange: (next: EditorHeaders) => void;
   showRequired: boolean;
   initialHeaders?: EditorHeaders;
+  chessczContext?: ChessczContext | null;
 };
 
 const RESULTS = ['*', '1-0', '0-1', '1/2-1/2'];
 
 type Side = 'White' | 'Black';
 
-export function HeaderForm({ headers, onChange, showRequired, initialHeaders }: Props) {
+export function HeaderForm({ headers, onChange, showRequired, initialHeaders, chessczContext }: Props) {
   const [refreshingSide, setRefreshingSide] = useState<Side | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
 
@@ -25,10 +35,29 @@ export function HeaderForm({ headers, onChange, showRequired, initialHeaders }: 
   const missing = (key: keyof EditorHeaders) => showRequired && !headers[key].trim();
   const changed = (key: keyof EditorHeaders) => !!initialHeaders && headers[key] !== initialHeaders[key];
 
+  const board = parseInt(headers.Board, 10);
+  const boardForRoster = Number.isFinite(board) && board > 0 ? board : 1;
+  const homeIsWhite = boardForRoster % 2 === 1;
+  const whiteTeamId = chessczContext ? (homeIsWhite ? chessczContext.homeTeamId : chessczContext.awayTeamId) : null;
+  const blackTeamId = chessczContext ? (homeIsWhite ? chessczContext.awayTeamId : chessczContext.homeTeamId) : null;
+
+  const whiteRosterQ = useChessczRoster(chessczContext?.compId ?? null, whiteTeamId);
+  const blackRosterQ = useChessczRoster(chessczContext?.compId ?? null, blackTeamId);
+
+  const whiteRoster = asArray<ChessczRosterEntry>(whiteRosterQ.data?.data);
+  const blackRoster = asArray<ChessczRosterEntry>(blackRosterQ.data?.data);
+  const whiteRosterError = (whiteRosterQ.error as { status?: number } | null)?.status ?? null;
+  const blackRosterError = (blackRosterQ.error as { status?: number } | null)?.status ?? null;
+
   const applyPlayer = (side: Side, p: PlayerHit) => {
     const eloFallback = p.fideStdElo ?? p.czeStdElo ?? null;
     const fullName = p.fullName?.trim();
     const clubName = p.clubName?.trim();
+    // In chesscz (match) mode the {side}Team field is the team name from the
+    // league lineup, not the player's club — never overwrite it from /members.
+    const nextTeam = chessczContext
+      ? headers[`${side}Team`]
+      : (clubName || headers[`${side}Team`]);
     onChange({
       ...headers,
       [side]: fullName || headers[side],
@@ -37,7 +66,21 @@ export function HeaderForm({ headers, onChange, showRequired, initialHeaders }: 
       [`${side}CzeElo`]: p.czeStdElo != null ? String(p.czeStdElo) : headers[`${side}CzeElo`],
       [`${side}FideElo`]: p.fideStdElo != null ? String(p.fideStdElo) : headers[`${side}FideElo`],
       [`${side}Elo`]: eloFallback != null ? String(eloFallback) : headers[`${side}Elo`],
-      [`${side}Team`]: clubName || headers[`${side}Team`],
+      [`${side}Team`]: nextTeam,
+    });
+  };
+
+  const applyRosterEntry = (side: Side, r: ChessczRosterEntry) => {
+    const eloFallback = r.playerFideElo > 0 ? r.playerFideElo : r.playerCzeElo > 0 ? r.playerCzeElo : null;
+    onChange({
+      ...headers,
+      [side]: r.playerName.trim() || headers[side],
+      [`${side}CzeId`]: String(r.playerId),
+      [`${side}CzeElo`]: r.playerCzeElo > 0 ? String(r.playerCzeElo) : headers[`${side}CzeElo`],
+      [`${side}FideElo`]: r.playerFideElo > 0 ? String(r.playerFideElo) : headers[`${side}FideElo`],
+      [`${side}Elo`]: eloFallback != null ? String(eloFallback) : headers[`${side}Elo`],
+      // WhiteFideId/BlackFideId stay as-is (roster doesn't return FIDE ID — use ⟳ on CzeId).
+      // WhiteTeam/BlackTeam stay as-is (already set from import).
     });
   };
 
@@ -76,22 +119,48 @@ export function HeaderForm({ headers, onChange, showRequired, initialHeaders }: 
         <Input value={headers.Site} onChange={(v) => set('Site', v)} changed={changed('Site')} />
 
         <Label text="White *" />
-        <PlayerAutocomplete
-          value={headers.White}
-          onChange={(v) => set('White', v)}
-          onPick={(p) => applyPlayer('White', p)}
-          invalid={missing('White')}
-          changed={changed('White')}
-        />
+        {chessczContext ? (
+          <RosterAutocomplete
+            value={headers.White}
+            onChange={(v) => set('White', v)}
+            onPick={(r) => applyRosterEntry('White', r)}
+            roster={whiteRoster}
+            isLoading={whiteRosterQ.isLoading}
+            errorStatus={whiteRosterError}
+            invalid={missing('White')}
+            changed={changed('White')}
+          />
+        ) : (
+          <PlayerAutocomplete
+            value={headers.White}
+            onChange={(v) => set('White', v)}
+            onPick={(p) => applyPlayer('White', p)}
+            invalid={missing('White')}
+            changed={changed('White')}
+          />
+        )}
 
         <Label text="Black *" />
-        <PlayerAutocomplete
-          value={headers.Black}
-          onChange={(v) => set('Black', v)}
-          onPick={(p) => applyPlayer('Black', p)}
-          invalid={missing('Black')}
-          changed={changed('Black')}
-        />
+        {chessczContext ? (
+          <RosterAutocomplete
+            value={headers.Black}
+            onChange={(v) => set('Black', v)}
+            onPick={(r) => applyRosterEntry('Black', r)}
+            roster={blackRoster}
+            isLoading={blackRosterQ.isLoading}
+            errorStatus={blackRosterError}
+            invalid={missing('Black')}
+            changed={changed('Black')}
+          />
+        ) : (
+          <PlayerAutocomplete
+            value={headers.Black}
+            onChange={(v) => set('Black', v)}
+            onPick={(p) => applyPlayer('Black', p)}
+            invalid={missing('Black')}
+            changed={changed('Black')}
+          />
+        )}
 
         <Label text="Date" />
         <Input value={headers.Date} onChange={(v) => set('Date', v)} placeholder="YYYY.MM.DD" changed={changed('Date')} />
