@@ -4,6 +4,7 @@ import { nagToSymbol, type MoveNode } from '../../lib/moveTree';
 import { useVariantArrowsToggle } from '../../hooks/useVariantArrowsToggle';
 import { useSanFormat } from '../../hooks/useSanFormat';
 import { formatSan, type SanMode } from '../../lib/sanFormat';
+import { SanFormatToggle } from '../SanFormatToggle';
 
 export function MoveList() {
   const { tree, path, goToMove } = useGameStore();
@@ -31,9 +32,12 @@ export function MoveList() {
           borderBottom: '1px solid #e5e7eb',
         }}
       >
-        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#666', textTransform: 'uppercase' }}>
-          Tahy
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#666', textTransform: 'uppercase' }}>
+            Tahy
+          </span>
+          <SanFormatToggle />
+        </div>
         <label style={{ display: 'flex', alignItems: 'center', fontSize: '0.75rem', color: '#555', gap: '0.3rem' }}>
           Šipky variant
           <button

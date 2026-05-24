@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useSanFormat } from '../../hooks/useSanFormat';
 import { formatSan } from '../../lib/sanFormat';
+import { SanFormatToggle } from '../SanFormatToggle';
 
 type Props = {
   moves: string[];
@@ -31,7 +32,10 @@ export function EditorMoveList({ moves, cursor, onJump, ecoLabel, disabled }: Pr
   return (
     <div style={containerStyle}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-        <span style={headerStyle}>Tahy</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={headerStyle}>Tahy</span>
+          <SanFormatToggle />
+        </div>
         {ecoLabel && <span style={{ fontSize: '0.75rem', color: '#666' }}>{ecoLabel}</span>}
       </div>
 

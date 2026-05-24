@@ -1,6 +1,5 @@
 import { Link, Outlet } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { SanFormatToggle } from './SanFormatToggle';
 
 export function Layout() {
   const { user, isAuthenticated, logout } = useAuth();
@@ -15,7 +14,6 @@ export function Layout() {
           {isAuthenticated && <Link to="/">Moje databáze</Link>}
           <Link to="/public">Veřejné databáze</Link>
         </nav>
-        <SanFormatToggle />
         {isAuthenticated && user && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             {user.avatar_url && (

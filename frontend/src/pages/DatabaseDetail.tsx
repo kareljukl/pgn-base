@@ -6,6 +6,7 @@ import { ImportDialog } from '../components/ImportDialog';
 import { BulkActionDialog } from '../components/DatabaseDetail/BulkActionDialog';
 import { removeDiacritics, stripMovetext, hasAnyTopLevelVariation, getResultColor } from '../lib/pgnUtils';
 import { formatPgnDate } from '../lib/dateFormat';
+import { ecoName } from '../lib/ecoNames';
 import { headersFromGameRow, toApiHeaders, type EditorHeaders } from '../lib/editorPgn';
 import {
   asArray,
@@ -50,6 +51,7 @@ type Game = {
   black_cze_id: string | null;
   result: string | null;
   eco: string | null;
+  ply_count: number | null;
   moves_pgn?: string;
 };
 
@@ -508,6 +510,8 @@ export function DatabaseDetail() {
               <th style={{ ...thStyle, cursor: 'default' }}>Domácí</th>
               <th style={{ ...thStyle, cursor: 'default' }}>Hosté</th>
               <th style={{ ...thStyle, cursor: 'default', textAlign: 'center' }}>Výsledek</th>
+              <th style={{ ...thStyle, cursor: 'default', textAlign: 'right' }}>Tahy</th>
+              <th style={{ ...thStyle, cursor: 'default' }}>ECO</th>
               <th style={thStyle}></th>
             </tr>
           </thead>
@@ -554,6 +558,19 @@ export function DatabaseDetail() {
                   </td>
                   <td style={{ ...tdStyle, textAlign: 'center', color: boardResult.color, fontWeight: 500 }}>
                     {boardResult.text}
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: game.ply_count ? '#333' : '#bbb' }}>
+                    {game.ply_count ? Math.ceil(game.ply_count / 2) : '—'}
+                  </td>
+                  <td style={{ ...tdStyle, color: game.eco ? '#333' : '#bbb' }}>
+                    {game.eco ? (
+                      <span>
+                        <span style={{ fontFamily: 'monospace', color: '#555' }}>{game.eco}</span>
+                        {ecoName(game.eco) && (
+                          <span style={{ marginLeft: '0.4rem', color: '#666' }}>{ecoName(game.eco)}</span>
+                        )}
+                      </span>
+                    ) : '—'}
                   </td>
                   <td style={tdStyle}>
                     <button

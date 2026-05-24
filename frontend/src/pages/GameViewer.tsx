@@ -6,6 +6,8 @@ import { api, API_ORIGIN } from '../lib/api';
 import { useGameStore } from '../store/gameStore';
 import { Board } from '../components/Board/Board';
 import { HeaderForm, type ChessczContext } from '../components/GameEditor/HeaderForm';
+import { LoadMovesDialog } from '../components/GameViewer/LoadMovesDialog';
+import { detectEcoFromMovesPgn } from '../lib/detectEco';
 import {
   emptyHeaders,
   headersFromGameRow,
@@ -122,6 +124,7 @@ export function GameViewer() {
   const [cleanupSummary, setCleanupSummary] = useState<string | null>(null);
   const [pathBeforeCleanup, setPathBeforeCleanup] = useState<number[] | null>(null);
   const [orientation, setOrientation] = useState<'white' | 'black'>('white');
+  const [showLoadMoves, setShowLoadMoves] = useState(false);
 
   const handleBestMove = useCallback((uci: string | null) => {
     setBestMoveArrow(uci ? { orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: 'green' } as DrawShape : null);
@@ -176,6 +179,7 @@ export function GameViewer() {
       setCleanedMovesPgn(null);
       setCleanupSummary(null);
       setPathBeforeCleanup(null);
+      setShowLoadMoves(false);
     }
   }, [data, loadGame]);
 
@@ -338,6 +342,31 @@ export function GameViewer() {
     setCleanupSummary(segments.join(' '));
   };
 
+  const handleLoadMoves = async (movesPgn: string) => {
+    if (pathBeforeCleanup === null) {
+      setPathBeforeCleanup(path);
+    }
+    setCleanedMovesPgn(movesPgn);
+    loadGame(movesPgn, {});
+    goToStart();
+    setCleanupSummary('Tahy nahrazeny. Hledám ECO…');
+    setShowLoadMoves(false);
+
+    try {
+      const detected = await detectEcoFromMovesPgn(movesPgn);
+      if (detected) {
+        setHeaders((h) => ({ ...h, ECO: detected.eco }));
+        setCleanupSummary(
+          `Tahy nahrazeny. ECO: ${detected.eco} ${detected.name}. Klikněte Uložit pro potvrzení.`
+        );
+      } else {
+        setCleanupSummary('Tahy nahrazeny z importu. Klikněte Uložit pro potvrzení.');
+      }
+    } catch {
+      setCleanupSummary('Tahy nahrazeny z importu. Klikněte Uložit pro potvrzení.');
+    }
+  };
+
   const handleEditGame = () => {
     const moveIdx = getCurrentMoveIndex();
     navigate(`/db/${id}/game/${gameId}/edit`, {
@@ -432,6 +461,14 @@ export function GameViewer() {
           >
             Vyčisti PGN
           </button>
+          <button
+            onClick={() => setShowLoadMoves((v) => !v)}
+            disabled={saveMutation.isPending || dirty}
+            title={dirty ? 'Nejprve uložte nebo zahoďte změny' : 'Nahradí tahy partie z PGN (hlavičky zůstanou)'}
+            style={{ ...topBarBtnStyle, background: showLoadMoves ? '#eef2ff' : '#fff', color: dirty ? '#999' : '#333', cursor: dirty ? 'not-allowed' : 'pointer' }}
+          >
+            Nahraj tahy
+          </button>
           <a
             href={`${API_ORIGIN}/api/v1/databases/${id}/games/${gameId}/export?mode=full`}
             download
@@ -446,6 +483,13 @@ export function GameViewer() {
         <div style={{ marginBottom: '0.75rem', fontSize: '0.85rem', color: '#555', padding: '0.4rem 0.6rem', background: '#f3f4f6', borderRadius: 4 }}>
           {cleanupSummary}
         </div>
+      )}
+
+      {showLoadMoves && (
+        <LoadMovesDialog
+          onCancel={() => setShowLoadMoves(false)}
+          onConfirm={handleLoadMoves}
+        />
       )}
 
       {dirty && (
