@@ -10,7 +10,9 @@ Project layout: `backend/` and `frontend/` are independent npm projects. Vite pr
 
 ## Work style
 
-_(volné na doplnění uživatelem)_
+**Verify UI changes before reporting done.** Pokud změna sahá na něco, co uživatel vidí nebo s tím interaguje (nová komponenta, upravený dialog, button, layout, nová column…), zavolej skill `verify` — spustí dev server, otevře feature v prohlížeči, screenshot — **před** hlášením „hotovo". `tsc --noEmit` dokazuje, že typy sedí, ne že feature funguje.
+
+Výjimka: čistý backend / type-only refactor / docs / dep bump → `node_modules/.bin/tsc --noEmit` stačí.
 
 ## Commands
 
