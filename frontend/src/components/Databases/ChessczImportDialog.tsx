@@ -9,11 +9,14 @@ import {
   DEFAULT_BOARD_COUNT,
   findMatch,
   formatMatchScore,
+  type ChessczCompetitionRegion,
+  type ChessczCompetitionSummary,
   type ChessczMatchResult,
   type ChessczRoundSchedule,
   type ChessczTableRow,
 } from '../../lib/chesscz';
 import {
+  useChessczCompetitions,
   useChessczCompSchedule,
   useChessczDetails,
   useChessczTable,
@@ -48,6 +51,7 @@ export function ChessczImportDialog({ onClose }: Props) {
 
   const [compIdInput, setCompIdInput] = useState('');
   const [activeCompId, setActiveCompId] = useState<number | null>(null);
+  const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [dbName, setDbName] = useState('');
   const [dbNameTouched, setDbNameTouched] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
@@ -56,6 +60,7 @@ export function ChessczImportDialog({ onClose }: Props) {
   const [selectedMatchKey, setSelectedMatchKey] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  const catalogQuery = useChessczCompetitions();
   const detailsQuery = useChessczDetails(activeCompId);
   const tableQuery = useChessczTable(activeCompId);
   const teamScheduleQuery = useChessczTeamSchedule(
@@ -65,6 +70,24 @@ export function ChessczImportDialog({ onClose }: Props) {
   const compScheduleQuery = useChessczCompSchedule(pickMode === 'round' ? activeCompId : null);
 
   const compDetail = detailsQuery.data?.data ?? null;
+  const catalog = catalogQuery.data?.data ?? null;
+
+  // ŠSČR (id 98) pinneme na začátek, ostatní v document order.
+  const regions: Array<[string, ChessczCompetitionRegion]> = useMemo(() => {
+    if (!catalog) return [];
+    const entries = Object.entries(catalog);
+    const sscr = entries.find(([id]) => id === '98');
+    const rest = entries.filter(([id]) => id !== '98');
+    return sscr ? [sscr, ...rest] : entries;
+  }, [catalog]);
+
+  const regionComps = useMemo<ChessczCompetitionSummary[]>(() => {
+    if (!selectedRegionId || !catalog) return [];
+    const list = catalog[selectedRegionId]?.competitions ?? [];
+    return [...list].sort((a, b) =>
+      a.compLevel - b.compLevel || a.compName.localeCompare(b.compName, 'cs')
+    );
+  }, [selectedRegionId, catalog]);
   const tableRows = useMemo<ChessczTableRow[]>(
     () => asArray(tableQuery.data?.data).slice().sort((a, b) => parseInt(a.teamRank) - parseInt(b.teamRank)),
     [tableQuery.data]
@@ -217,6 +240,54 @@ export function ChessczImportDialog({ onClose }: Props) {
 
         {/* Step 1: compId */}
         <Section title="1. Soutěž">
+          {/* Cascade: kraj/liga → soutěž */}
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <select
+              value={selectedRegionId ?? ''}
+              onChange={(e) => {
+                const v = e.target.value || null;
+                setSelectedRegionId(v);
+                setActiveCompId(null);
+                setDbNameTouched(false);
+              }}
+              disabled={catalogQuery.isLoading || !!catalogQuery.error}
+              style={{ ...selectStyle, width: 'auto', minWidth: 220 }}
+            >
+              <option value="">
+                {catalogQuery.isLoading ? 'Načítám…' : 'Kraj/liga…'}
+              </option>
+              {regions.map(([id, r]) => (
+                <option key={id} value={id}>{r.regionName}</option>
+              ))}
+            </select>
+            <select
+              value={activeCompId !== null && regionComps.some((c) => c.compId === activeCompId) ? String(activeCompId) : ''}
+              onChange={(e) => {
+                const id = e.target.value ? parseInt(e.target.value, 10) : null;
+                if (id !== null && Number.isFinite(id) && id > 0) {
+                  setActiveCompId(id);
+                  setDbNameTouched(false);
+                }
+              }}
+              disabled={!selectedRegionId || catalogQuery.isLoading}
+              style={{ ...selectStyle, width: 'auto', minWidth: 280, flex: 1 }}
+            >
+              <option value="">
+                {selectedRegionId ? 'Soutěž…' : 'Nejprve vyber kraj/ligu'}
+              </option>
+              {regionComps.map((c) => (
+                <option key={c.compId} value={c.compId}>
+                  {c.compName}{c.compYoungOrAdult === 'Y' ? ' (mládež)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          {catalogQuery.error && (
+            <p style={mutedStyle}>Seznam soutěží se nepodařilo načíst — zadejte ID ručně níže.</p>
+          )}
+
+          <div style={{ fontSize: '0.75rem', color: '#999', margin: '0.5rem 0', textAlign: 'center' }}>— nebo —</div>
+
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <input
               placeholder="ID soutěže (např. 3318)"
@@ -224,7 +295,6 @@ export function ChessczImportDialog({ onClose }: Props) {
               onChange={(e) => setCompIdInput(e.target.value.replace(/[^0-9]/g, ''))}
               onKeyDown={(e) => { if (e.key === 'Enter') onLoad(); }}
               style={{ ...inputStyle, width: 180 }}
-              autoFocus
             />
             <button onClick={onLoad} disabled={!compIdInput || detailsLoading} style={btnStyle}>
               {detailsLoading ? 'Načítám…' : 'Načíst'}

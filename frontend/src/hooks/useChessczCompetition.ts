@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import type {
   ChessczCompDetail,
+  ChessczCompetitionsByRegion,
   ChessczMatchResult,
   ChessczProxyResponse,
   ChessczRosterEntry,
@@ -12,6 +13,17 @@ import type {
 
 const STALE_5_MIN = 5 * 60_000;
 const STALE_30_MIN = 30 * 60_000;
+const STALE_24_H = 24 * 60 * 60_000;
+
+export function useChessczCompetitions() {
+  return useQuery({
+    queryKey: ['chesscz-competitions'],
+    queryFn: () =>
+      api.get<ChessczProxyResponse<ChessczCompetitionsByRegion>>('/chesscz/competitions'),
+    staleTime: STALE_24_H,
+    retry: false,
+  });
+}
 
 export function useChessczDetails(compId: number | null) {
   return useQuery({

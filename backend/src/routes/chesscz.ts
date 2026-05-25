@@ -472,6 +472,17 @@ function parseIdParam(v: string): number | null {
   return n;
 }
 
+// GET /competitions — katalog soutěží podle krajů (no compId param)
+chesscz.get('/competitions', authRequired, async (c) => {
+  const r = await cachedFetchSscr(
+    c.env.DB,
+    'comp:all',
+    '/competitions',
+    COMP_SCHEDULE_TTL_MS
+  );
+  return c.json(r.body, r.status as 200 | 400 | 401 | 429 | 502 | 503);
+});
+
 // GET /competitions/:compId/details
 chesscz.get('/competitions/:compId/details', authRequired, async (c) => {
   const compId = parseIdParam(c.req.param('compId'));

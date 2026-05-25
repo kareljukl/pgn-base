@@ -69,6 +69,22 @@ export type ChessczMatchResult = {
   matchGames: ChessczBoardGame[];
 };
 
+export type ChessczCompetitionSummary = {
+  compName: string;
+  compId: number;
+  compLevel: number;
+  compSeason: number;
+  compYoungOrAdult: 'A' | 'Y';
+};
+
+export type ChessczCompetitionRegion = {
+  regionCode: string;
+  regionName: string;
+  competitions: ChessczCompetitionSummary[];
+};
+
+export type ChessczCompetitionsByRegion = Record<string, ChessczCompetitionRegion>;
+
 export type ChessczRosterEntry = {
   rosterPosition: number;
   playerId: number;
