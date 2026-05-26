@@ -4,7 +4,7 @@ import type { AppEnv } from '../types';
 
 const databases = new Hono<AppEnv>();
 
-const MAX_DATABASES_PER_USER = 50;
+const MAX_DATABASES_PER_USER = 200;
 
 // List own databases (auth required)
 databases.get('/', authRequired, async (c) => {
@@ -33,6 +33,7 @@ databases.post('/', authRequired, async (c) => {
     chesscz_round_nr?: number;
     chesscz_home_team_id?: number;
     chesscz_away_team_id?: number;
+    season_id?: string;
   }>();
 
   if (!body.name || body.name.trim().length === 0) {
@@ -58,6 +59,16 @@ databases.post('/', authRequired, async (c) => {
   const homeTeamId = importSource === 'chesscz' && Number.isFinite(body.chesscz_home_team_id) ? body.chesscz_home_team_id! : null;
   const awayTeamId = importSource === 'chesscz' && Number.isFinite(body.chesscz_away_team_id) ? body.chesscz_away_team_id! : null;
 
+  let seasonId: string | null = null;
+  if (body.season_id) {
+    const season = await c.env.DB.prepare(
+      'SELECT owner_id FROM seasons WHERE id = ?'
+    ).bind(body.season_id).first<{ owner_id: string }>();
+    if (!season) return c.json({ error: 'Sezóna nenalezena' }, 404);
+    if (season.owner_id !== user.id) return c.json({ error: 'Přístup k sezóně odepřen' }, 403);
+    seasonId = body.season_id;
+  }
+
   const id = crypto.randomUUID();
   const now = Math.floor(Date.now() / 1000);
 
@@ -65,12 +76,12 @@ databases.post('/', authRequired, async (c) => {
     `INSERT INTO databases
        (id, owner_id, name, description, is_public,
         import_source, chesscz_comp_id, chesscz_round_nr, chesscz_home_team_id, chesscz_away_team_id,
-        created_at, updated_at)
-     VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)`
+        season_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
     id, user.id, body.name.trim(), body.description?.trim() || null,
     importSource, compId, roundNr, homeTeamId, awayTeamId,
-    now, now
+    seasonId, now, now
   ).run();
 
   const db = await c.env.DB.prepare(

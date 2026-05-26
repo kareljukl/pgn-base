@@ -2,7 +2,7 @@
 
 ## Kontext
 
-Lichess Opening Explorer API (`explorer.lichess.ovh`) nově vyžaduje autentizaci
+Lichess Opening Explorer API (`explorer.lichess.org`) nově vyžaduje autentizaci
 Bearer tokenem kvůli ochraně proti DDOS. Token nesmí být v frontend kódu —
 musí zůstat bezpečně na serveru.
 
@@ -18,7 +18,7 @@ request na Lichess.
 Frontend (GameViewer)
     ↓ GET /api/v1/explorer?fen=<FEN>
 Cloudflare Worker (proxy)
-    ↓ GET https://explorer.lichess.ovh/masters?fen=<FEN>
+    ↓ GET https://explorer.lichess.org/masters?fen=<FEN>
       Authorization: Bearer <LICHESS_TOKEN>
 Lichess Explorer API
     ↓ JSON response
@@ -68,7 +68,7 @@ Query parametry (přebírá od frontendu a přeposílá na Lichess):
 Endpoint:
 - Je autentizovaný (vyžaduje přihlášeného uživatele PGN Base)
 - Validuje že `fen` parametr je přítomen
-- Volá `https://explorer.lichess.ovh/masters` s Bearer tokenem ze secrets
+- Volá `https://explorer.lichess.org/masters` s Bearer tokenem ze secrets
 - Přeposílá response 1:1 na frontend
 - Při chybě od Lichess (429, 503) vrátí srozumitelnou chybu
 
@@ -84,7 +84,7 @@ explorer.get('/', async (c) => {
 
   const moves = c.req.query('moves') ?? '15'
 
-  const url = new URL('https://explorer.lichess.ovh/masters')
+  const url = new URL('https://explorer.lichess.org/masters')
   url.searchParams.set('fen', fen)
   url.searchParams.set('moves', moves)
   url.searchParams.set('topGames', '0')
@@ -118,7 +118,7 @@ app.route('/api/v1/explorer', explorer)
 
 **Soubor:** `frontend/src/components/OpeningExplorer/OpeningExplorer.tsx`
 
-Aktuální stav: komponenta volá přímo `explorer.lichess.ovh` — to přestalo fungovat.
+Aktuální stav: komponenta volá přímo `explorer.lichess.org` — to přestalo fungovat.
 
 Změna: volat `/api/v1/explorer?fen=<FEN>` (vlastní backend proxy).
 
@@ -126,7 +126,7 @@ Hook `useOpeningExplorer.ts` — změnit URL:
 
 ```typescript
 // PŘED (nefunkční):
-const url = `https://explorer.lichess.ovh/masters?fen=${encodeURIComponent(fen)}&moves=15`
+const url = `https://explorer.lichess.org/masters?fen=${encodeURIComponent(fen)}&moves=15`
 
 // PO:
 const url = `/api/v1/explorer?fen=${encodeURIComponent(fen)}&moves=15`

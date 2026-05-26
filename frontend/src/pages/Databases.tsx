@@ -10,6 +10,18 @@ type Database = {
   description: string | null;
   is_public: number;
   game_count: number;
+  season_id: string | null;
+  created_at: number;
+  updated_at: number;
+};
+
+type Season = {
+  id: string;
+  name: string;
+  description: string | null;
+  chesscz_comp_id: number;
+  chesscz_team_id: number;
+  round_count: number;
   created_at: number;
   updated_at: number;
 };
@@ -18,11 +30,17 @@ export function Databases() {
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [showChessczImport, setShowChessczImport] = useState(false);
+  const [showSeasonImport, setShowSeasonImport] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['databases'],
     queryFn: () => api.get<{ databases: Database[] }>('/databases'),
+  });
+
+  const { data: seasonsData } = useQuery({
+    queryKey: ['seasons'],
+    queryFn: () => api.get<{ seasons: Season[] }>('/seasons'),
   });
 
   const createMutation = useMutation({
@@ -52,13 +70,18 @@ export function Databases() {
 
   if (isLoading) return <p>Načítání...</p>;
 
-  const databases = data?.databases ?? [];
+  const allDatabases = data?.databases ?? [];
+  const seasons = seasonsData?.seasons ?? [];
+  const databases = allDatabases.filter((db) => db.season_id == null);
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <h1 style={{ margin: 0 }}>Moje databáze</h1>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button onClick={() => setShowSeasonImport(true)} style={secondaryBtnStyle}>
+            Nová sezóna ze ŠSČR
+          </button>
           <button onClick={() => setShowChessczImport(true)} style={secondaryBtnStyle}>
             Importovat ze ŠSČR
           </button>
@@ -77,7 +100,39 @@ export function Databases() {
       )}
 
       {showChessczImport && (
-        <ChessczImportDialog onClose={() => setShowChessczImport(false)} />
+        <ChessczImportDialog mode="match" onClose={() => setShowChessczImport(false)} />
+      )}
+
+      {showSeasonImport && (
+        <ChessczImportDialog mode="season" onClose={() => setShowSeasonImport(false)} />
+      )}
+
+      {seasons.length > 0 && (
+        <div style={{ marginBottom: '1.5rem' }}>
+          <h2 style={{ fontSize: '1.1rem', margin: '0 0 0.5rem' }}>Sezóny</h2>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #e0e0e0', textAlign: 'left' }}>
+                <th style={thStyle}>Název</th>
+                <th style={thStyle}>Popis</th>
+                <th style={thStyle}>Kol</th>
+                <th style={thStyle}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {seasons.map((s) => (
+                <tr key={s.id} style={{ borderBottom: '1px solid #eee' }}>
+                  <td style={tdStyle}>
+                    <Link to={`/season/${s.id}`} style={{ fontWeight: 500 }}>{s.name}</Link>
+                  </td>
+                  <td style={{ ...tdStyle, color: '#666' }}>{s.description || '—'}</td>
+                  <td style={tdStyle}>{s.round_count}</td>
+                  <td style={tdStyle}></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {databases.length === 0 ? (

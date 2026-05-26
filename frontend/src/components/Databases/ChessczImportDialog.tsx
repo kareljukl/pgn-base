@@ -8,12 +8,14 @@ import {
   buildPlaceholderGames,
   DEFAULT_BOARD_COUNT,
   findMatch,
+  formatChessczDate,
   formatMatchScore,
   type ChessczCompetitionRegion,
   type ChessczCompetitionSummary,
   type ChessczMatchResult,
   type ChessczRoundSchedule,
   type ChessczTableRow,
+  type ChessczTeamScheduleEntry,
 } from '../../lib/chesscz';
 import {
   useChessczCompetitions,
@@ -24,8 +26,11 @@ import {
   fetchChessczRoundMatches,
 } from '../../hooks/useChessczCompetition';
 
+type Mode = 'match' | 'season';
+
 type Props = {
   onClose: () => void;
+  mode?: Mode;
 };
 
 type MatchPick = {
@@ -40,12 +45,8 @@ type MatchPick = {
   hasScore: boolean;
 };
 
-type RoundPick = {
-  roundNr: number;
-  roundDate: string;
-};
-
-export function ChessczImportDialog({ onClose }: Props) {
+export function ChessczImportDialog({ onClose, mode = 'match' }: Props) {
+  const isSeasonMode = mode === 'season';
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -58,16 +59,18 @@ export function ChessczImportDialog({ onClose }: Props) {
   const [pickMode, setPickMode] = useState<'team' | 'round'>('team');
   const [selectedRoundNr, setSelectedRoundNr] = useState<number | null>(null);
   const [selectedMatchKey, setSelectedMatchKey] = useState<string | null>(null);
+  const [selectedSeasonRoundNrs, setSelectedSeasonRoundNrs] = useState<Set<number>>(new Set());
+  const [seasonRoundsTouched, setSeasonRoundsTouched] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const catalogQuery = useChessczCompetitions();
   const detailsQuery = useChessczDetails(activeCompId);
   const tableQuery = useChessczTable(activeCompId);
   const teamScheduleQuery = useChessczTeamSchedule(
-    pickMode === 'team' ? activeCompId : null,
-    pickMode === 'team' ? selectedTeamId : null
+    isSeasonMode || pickMode === 'team' ? activeCompId : null,
+    isSeasonMode || pickMode === 'team' ? selectedTeamId : null
   );
-  const compScheduleQuery = useChessczCompSchedule(pickMode === 'round' ? activeCompId : null);
+  const compScheduleQuery = useChessczCompSchedule(!isSeasonMode && pickMode === 'round' ? activeCompId : null);
 
   const compDetail = detailsQuery.data?.data ?? null;
   const catalog = catalogQuery.data?.data ?? null;
@@ -92,7 +95,7 @@ export function ChessczImportDialog({ onClose }: Props) {
     () => asArray(tableQuery.data?.data).slice().sort((a, b) => parseInt(a.teamRank) - parseInt(b.teamRank)),
     [tableQuery.data]
   );
-  const teamSchedule = useMemo(
+  const teamSchedule = useMemo<ChessczTeamScheduleEntry[]>(
     () => asArray(teamScheduleQuery.data?.data),
     [teamScheduleQuery.data]
   );
@@ -105,22 +108,41 @@ export function ChessczImportDialog({ onClose }: Props) {
     [compSchedule, selectedRoundNr]
   );
 
-  // Auto-fill DB name from compDetail when loaded.
+  // Auto-fill DB / season name when compDetail loads. Season mode uses compName as base.
   useEffect(() => {
-    if (compDetail?.compName && !dbNameTouched) {
+    if (!compDetail?.compName || dbNameTouched) return;
+    if (isSeasonMode) {
+      // Try year guess: chess.cz seasons span Oct→Apr; use today's year ± 1.
+      const today = new Date();
+      const y = today.getFullYear();
+      const seasonStart = today.getMonth() >= 6 ? y : y - 1;
+      setDbName(`${compDetail.compName} ${seasonStart}/${seasonStart + 1}`);
+    } else {
       setDbName(compDetail.compName);
     }
-  }, [compDetail, dbNameTouched]);
+  }, [compDetail, dbNameTouched, isSeasonMode]);
 
   // Reset downstream selections when comp / team / mode changes.
   useEffect(() => {
     setSelectedTeamId(null);
     setSelectedRoundNr(null);
     setSelectedMatchKey(null);
+    setSelectedSeasonRoundNrs(new Set());
+    setSeasonRoundsTouched(false);
   }, [activeCompId, pickMode]);
   useEffect(() => {
     setSelectedMatchKey(null);
+    setSelectedSeasonRoundNrs(new Set());
+    setSeasonRoundsTouched(false);
   }, [selectedTeamId, selectedRoundNr]);
+
+  // Season mode: when teamSchedule arrives & user hasn't picked yet, pre-check home rounds.
+  useEffect(() => {
+    if (!isSeasonMode || seasonRoundsTouched) return;
+    if (selectedTeamId === null || teamSchedule.length === 0) return;
+    const homeOnly = teamSchedule.filter((e) => e.homeTeamId === selectedTeamId).map((e) => e.roundNr);
+    setSelectedSeasonRoundNrs(new Set(homeOnly));
+  }, [isSeasonMode, seasonRoundsTouched, selectedTeamId, teamSchedule]);
 
   const matchOptions: MatchPick[] = useMemo(() => {
     if (pickMode === 'team') {
@@ -156,8 +178,13 @@ export function ChessczImportDialog({ onClose }: Props) {
     return matchOptions.find((m) => keyOf(m) === selectedMatchKey) ?? null;
   }, [matchOptions, selectedMatchKey]);
 
+  // Season rounds: from teamSchedule, sorted by roundNr.
+  const seasonRoundPicks = useMemo(() => {
+    if (selectedTeamId === null) return [];
+    return [...teamSchedule].sort((a, b) => a.roundNr - b.roundNr);
+  }, [selectedTeamId, teamSchedule]);
 
-  const createMutation = useMutation({
+  const createMatchMutation = useMutation({
     mutationFn: async () => {
       if (!compDetail || !selectedMatch) throw new Error('Chybí výběr');
       const trimmedName = dbName.trim() || compDetail.compName;
@@ -173,7 +200,6 @@ export function ChessczImportDialog({ onClose }: Props) {
       const dbRes = await api.post<{ database: { id: string } }>('/databases', dbBody);
       const dbId = dbRes.database.id;
 
-      // Try to fetch match results up-front so we can size game count correctly.
       let matchResult: ChessczMatchResult | null = null;
       if (selectedMatch.hasScore) {
         try {
@@ -181,7 +207,6 @@ export function ChessczImportDialog({ onClose }: Props) {
           const matches = asArray(res.data);
           matchResult = findMatch(matches, selectedMatch.homeTeamId, selectedMatch.awayTeamId);
         } catch {
-          // If results fetch fails, fall through to placeholder games.
           matchResult = null;
         }
       }
@@ -196,7 +221,6 @@ export function ChessczImportDialog({ onClose }: Props) {
         boardCount,
       });
 
-      // If we already have match results, merge them into placeholders before insert.
       const gamesPayload = placeholders.map((g, idx) => {
         if (!matchResult || idx >= matchResult.matchGames.length) return g;
         const mapped = boardGameToHeaders(matchResult, matchResult.matchGames[idx], idx, compDetail.compName);
@@ -216,6 +240,45 @@ export function ChessczImportDialog({ onClose }: Props) {
     },
   });
 
+  const createSeasonMutation = useMutation({
+    mutationFn: async () => {
+      if (!compDetail || selectedTeamId === null) throw new Error('Chybí výběr');
+      const trimmedName = dbName.trim();
+      if (!trimmedName) throw new Error('Vyplňte název sezóny');
+      const pickedRounds = seasonRoundPicks
+        .filter((r) => selectedSeasonRoundNrs.has(r.roundNr))
+        .map((r) => ({
+          roundNr: r.roundNr,
+          roundDate: r.roundDate,
+          homeTeamId: r.homeTeamId,
+          homeTeamName: r.homeTeamName,
+          awayTeamId: r.awayTeamId,
+          awayTeamName: r.awayTeamName,
+        }));
+      if (pickedRounds.length === 0) throw new Error('Vyberte alespoň jedno kolo');
+
+      const body = {
+        name: trimmedName,
+        chesscz_comp_id: compDetail.compId,
+        chesscz_team_id: selectedTeamId,
+        comp_name: compDetail.compName,
+        rounds: pickedRounds,
+      };
+      const res = await api.post<{ season: { id: string } }>('/seasons', body);
+      return res.season.id;
+    },
+    onSuccess: (seasonId) => {
+      queryClient.invalidateQueries({ queryKey: ['seasons'] });
+      queryClient.invalidateQueries({ queryKey: ['databases'] });
+      navigate(`/season/${seasonId}`);
+    },
+    onError: (err) => {
+      setSubmitError(err instanceof Error ? err.message : 'Chyba při vytváření sezóny');
+    },
+  });
+
+  const createMutation = isSeasonMode ? createSeasonMutation : createMatchMutation;
+
   const onLoad = () => {
     const n = parseInt(compIdInput.trim(), 10);
     if (!Number.isFinite(n) || n <= 0) return;
@@ -227,20 +290,21 @@ export function ChessczImportDialog({ onClose }: Props) {
   const detailsError = activeCompId !== null && detailsQuery.isError;
   const tableLoading = activeCompId !== null && tableQuery.isLoading;
   const tableError = activeCompId !== null && tableQuery.isError;
-  const scheduleLoading = pickMode === 'round' && activeCompId !== null && compScheduleQuery.isLoading;
-  const scheduleError = pickMode === 'round' && activeCompId !== null && compScheduleQuery.isError;
+  const scheduleLoading = !isSeasonMode && pickMode === 'round' && activeCompId !== null && compScheduleQuery.isLoading;
+  const scheduleError = !isSeasonMode && pickMode === 'round' && activeCompId !== null && compScheduleQuery.isError;
+
+  const dialogTitle = isSeasonMode ? 'Nová sezóna ze ŠSČR' : 'Import ze ŠSČR';
 
   return (
     <div style={backdrop} onClick={createMutation.isPending ? undefined : onClose}>
       <div style={box} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.75rem' }}>
-          <h3 style={{ margin: 0 }}>Import ze ŠSČR</h3>
+          <h3 style={{ margin: 0 }}>{dialogTitle}</h3>
           <button onClick={onClose} disabled={createMutation.isPending} style={closeBtn}>×</button>
         </div>
 
         {/* Step 1: compId */}
         <Section title="1. Soutěž">
-          {/* Cascade: kraj/liga → soutěž */}
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <select
               value={selectedRegionId ?? ''}
@@ -312,15 +376,17 @@ export function ChessczImportDialog({ onClose }: Props) {
           )}
         </Section>
 
-        {/* Step 2: tým / kolo */}
+        {/* Step 2: tým / kolo (season mode: tým-only) */}
         {compDetail && (
-          <Section title="2. Tým nebo kolo">
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', fontSize: '0.85rem' }}>
-              <label><input type="radio" checked={pickMode === 'team'} onChange={() => setPickMode('team')} /> Vybrat podle týmu</label>
-              <label><input type="radio" checked={pickMode === 'round'} onChange={() => setPickMode('round')} /> Vybrat podle kola</label>
-            </div>
+          <Section title={isSeasonMode ? '2. Můj tým' : '2. Tým nebo kolo'}>
+            {!isSeasonMode && (
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', fontSize: '0.85rem' }}>
+                <label><input type="radio" checked={pickMode === 'team'} onChange={() => setPickMode('team')} /> Vybrat podle týmu</label>
+                <label><input type="radio" checked={pickMode === 'round'} onChange={() => setPickMode('round')} /> Vybrat podle kola</label>
+              </div>
+            )}
 
-            {pickMode === 'team' ? (
+            {(isSeasonMode || pickMode === 'team') ? (
               <>
                 {tableLoading && <p style={mutedStyle}>Načítám tabulku…</p>}
                 {tableError && <p style={errStyle}>Tabulka nedostupná.</p>}
@@ -362,8 +428,8 @@ export function ChessczImportDialog({ onClose }: Props) {
           </Section>
         )}
 
-        {/* Step 3: výběr zápasu */}
-        {compDetail && ((pickMode === 'team' && selectedTeamId) || (pickMode === 'round' && selectedRoundNr)) && (
+        {/* Step 3: výběr zápasu (match mode) / výběr kol (season mode) */}
+        {compDetail && !isSeasonMode && ((pickMode === 'team' && selectedTeamId) || (pickMode === 'round' && selectedRoundNr)) && (
           <Section title="3. Zápas">
             {teamScheduleQuery.isLoading && <p style={mutedStyle}>Načítám zápasy…</p>}
             {teamScheduleQuery.isError && <p style={errStyle}>Zápasy nedostupné.</p>}
@@ -396,8 +462,59 @@ export function ChessczImportDialog({ onClose }: Props) {
           </Section>
         )}
 
-        {/* Step 4: confirm */}
-        {selectedMatch && compDetail && (
+        {compDetail && isSeasonMode && selectedTeamId !== null && (
+          <Section title="3. Kola">
+            {teamScheduleQuery.isLoading && <p style={mutedStyle}>Načítám rozpis týmu…</p>}
+            {teamScheduleQuery.isError && <p style={errStyle}>Rozpis týmu nedostupný.</p>}
+            {seasonRoundPicks.length > 0 && (
+              <>
+                <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem' }}>
+                  Předzaškrtnutá jsou jen domácí kola — můžete (od)zaškrtnout libovolná.
+                </div>
+                <div style={roundsTableWrap}>
+                  <table style={matchTable}>
+                    <tbody>
+                      {seasonRoundPicks.map((r) => {
+                        const checked = selectedSeasonRoundNrs.has(r.roundNr);
+                        const isHome = r.homeTeamId === selectedTeamId;
+                        const opponent = isHome ? r.awayTeamName : r.homeTeamName;
+                        return (
+                          <tr key={r.roundNr} style={matchRow}>
+                            <td style={cellCheck}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) => {
+                                  setSeasonRoundsTouched(true);
+                                  setSelectedSeasonRoundNrs((prev) => {
+                                    const next = new Set(prev);
+                                    if (e.target.checked) next.add(r.roundNr);
+                                    else next.delete(r.roundNr);
+                                    return next;
+                                  });
+                                }}
+                              />
+                            </td>
+                            <td style={cellRound}>{r.roundNr}.</td>
+                            <td style={cellDate}>{r.roundDate}</td>
+                            <td style={cellHome}>{isHome ? 'doma' : 'venku'}</td>
+                            <td style={cellAway}>{isHome ? `vs. ${opponent}` : `u ${opponent}`}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ marginTop: '0.4rem', fontSize: '0.8rem', color: '#666' }}>
+                  Vybráno: <strong>{selectedSeasonRoundNrs.size}</strong> z {seasonRoundPicks.length}
+                </div>
+              </>
+            )}
+          </Section>
+        )}
+
+        {/* Step 4: confirm (match mode) */}
+        {!isSeasonMode && selectedMatch && compDetail && (
           <Section title="4. Shrnutí">
             <div style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>
               <div><strong>Soutěž:</strong> {compDetail.compName}</div>
@@ -426,11 +543,47 @@ export function ChessczImportDialog({ onClose }: Props) {
             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
               <button onClick={onClose} disabled={createMutation.isPending} style={secondaryBtn}>Zrušit</button>
               <button
-                onClick={() => createMutation.mutate()}
+                onClick={() => createMatchMutation.mutate()}
                 disabled={createMutation.isPending || !dbName.trim()}
                 style={btnStyle}
               >
                 {createMutation.isPending ? 'Vytvářím…' : 'Vytvořit databázi'}
+              </button>
+            </div>
+          </Section>
+        )}
+
+        {/* Step 4: confirm (season mode) */}
+        {isSeasonMode && compDetail && selectedTeamId !== null && selectedSeasonRoundNrs.size > 0 && (
+          <Section title="4. Shrnutí">
+            <div style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+              <div><strong>Soutěž:</strong> {compDetail.compName}</div>
+              <div>
+                <strong>Tým:</strong>{' '}
+                {tableRows.find((r) => r.teamId === selectedTeamId)?.teamName ?? `#${selectedTeamId}`}
+              </div>
+              <div><strong>Kol v sezóně:</strong> {selectedSeasonRoundNrs.size}</div>
+            </div>
+            <div style={{ marginBottom: '0.5rem' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', color: '#444', marginBottom: '0.25rem' }}>
+                Název sezóny
+              </label>
+              <input
+                value={dbName}
+                onChange={(e) => { setDbName(e.target.value); setDbNameTouched(true); }}
+                style={inputStyle}
+                maxLength={100}
+              />
+            </div>
+            {submitError && <p style={errStyle}>{submitError}</p>}
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
+              <button onClick={onClose} disabled={createMutation.isPending} style={secondaryBtn}>Zrušit</button>
+              <button
+                onClick={() => createSeasonMutation.mutate()}
+                disabled={createMutation.isPending || !dbName.trim() || selectedSeasonRoundNrs.size === 0}
+                style={btnStyle}
+              >
+                {createMutation.isPending ? 'Vytvářím…' : `Vytvořit sezónu (${selectedSeasonRoundNrs.size} kol)`}
               </button>
             </div>
           </Section>
@@ -488,6 +641,12 @@ const matchTableWrap: React.CSSProperties = {
   maxHeight: 320,
   overflowY: 'auto',
 };
+const roundsTableWrap: React.CSSProperties = {
+  border: '1px solid #ddd',
+  borderRadius: 4,
+  maxHeight: 360,
+  overflowY: 'auto',
+};
 const matchTable: React.CSSProperties = {
   width: '100%',
   borderCollapse: 'collapse',
@@ -516,3 +675,4 @@ const cellScore: React.CSSProperties = {
   fontWeight: 500,
   width: 72,
 };
+const cellCheck: React.CSSProperties = { ...cellBase, width: 32, textAlign: 'center' };

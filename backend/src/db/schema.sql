@@ -7,6 +7,18 @@ CREATE TABLE IF NOT EXISTS users (
   created_at  INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS seasons (
+  id                    TEXT PRIMARY KEY,
+  owner_id              TEXT NOT NULL REFERENCES users(id),
+  name                  TEXT NOT NULL,
+  description           TEXT,
+  chesscz_comp_id       INTEGER NOT NULL,
+  chesscz_team_id       INTEGER NOT NULL,
+  created_at            INTEGER NOT NULL,
+  updated_at            INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_seasons_owner ON seasons(owner_id);
+
 CREATE TABLE IF NOT EXISTS databases (
   id                    TEXT PRIMARY KEY,
   owner_id              TEXT NOT NULL REFERENCES users(id),
@@ -18,6 +30,7 @@ CREATE TABLE IF NOT EXISTS databases (
   chesscz_round_nr      INTEGER,
   chesscz_home_team_id  INTEGER,
   chesscz_away_team_id  INTEGER,
+  season_id             TEXT REFERENCES seasons(id),
   created_at            INTEGER NOT NULL,
   updated_at            INTEGER NOT NULL
 );
@@ -100,3 +113,4 @@ CREATE INDEX IF NOT EXISTS idx_games_black ON games(black COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_games_date ON games(date);
 CREATE INDEX IF NOT EXISTS idx_databases_owner ON databases(owner_id);
 CREATE INDEX IF NOT EXISTS idx_databases_public ON databases(is_public);
+CREATE INDEX IF NOT EXISTS idx_databases_season ON databases(season_id);

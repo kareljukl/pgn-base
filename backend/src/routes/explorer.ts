@@ -17,17 +17,23 @@ explorer.get('/', authRequired, async (c) => {
 
   const moves = c.req.query('moves') ?? '15';
 
-  const url = new URL('https://explorer.lichess.ovh/masters');
+  const url = new URL('https://explorer.lichess.org/masters');
   url.searchParams.set('fen', fen);
   url.searchParams.set('moves', moves);
   url.searchParams.set('topGames', '0');
 
-  const resp = await fetch(url.toString(), {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Accept': 'application/json',
-    },
-  });
+  let resp: Response;
+  try {
+    resp = await fetch(url.toString(), {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json',
+      },
+    });
+  } catch (e) {
+    console.error('Explorer fetch failed:', e instanceof Error ? e.message : String(e));
+    return c.json({ error: 'Lichess fetch failed', detail: e instanceof Error ? e.message : String(e) }, 502);
+  }
 
   if (!resp.ok) {
     const status = resp.status;

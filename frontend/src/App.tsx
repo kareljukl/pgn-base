@@ -4,6 +4,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { Login } from './pages/Login';
 import { Databases } from './pages/Databases';
 import { DatabaseDetail } from './pages/DatabaseDetail';
+import { SeasonDetail } from './pages/SeasonDetail';
 import { GameViewer } from './pages/GameViewer';
 import { GameEditor } from './pages/GameEditor';
 import { PublicDatabases } from './pages/PublicDatabases';
@@ -19,6 +20,7 @@ export function App() {
         {/* Protected routes — require auth */}
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<Databases />} />
+          <Route path="/season/:id" element={<SeasonDetail />} />
           <Route path="/db/:id" element={<DatabaseDetail />} />
           <Route path="/db/:id/game/new" element={<GameEditor />} />
           <Route path="/db/:id/game/:gameId/edit" element={<GameEditor />} />

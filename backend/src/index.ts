@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { auth } from './routes/auth';
 import { databases } from './routes/databases';
+import { seasons } from './routes/seasons';
 import { games } from './routes/games';
 import { publicRoutes } from './routes/public';
 import { explorer } from './routes/explorer';
@@ -56,6 +57,7 @@ app.get('/api/v1/health', (c) => {
 app.route('/api/v1/auth', auth);
 app.route('/api/v1/databases', databases);
 app.route('/api/v1/databases', games);
+app.route('/api/v1/seasons', seasons);
 app.route('/api/v1/public', publicRoutes);
 app.route('/api/v1/explorer', explorer);
 app.route('/api/v1/chesscz', chesscz);
