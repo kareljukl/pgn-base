@@ -12,3 +12,11 @@ frontend/tsconfig.tsbuildinfo
 
 # Postman exports (reference only; schemas live in apichesscz.openapi.yaml)
 *.postman_collection.json
+
+# Manual chesscz API dumps (debugging artifacts)
+docs/competitions.json
+docs/details.json
+docs/round_matches.json
+docs/round_schedule.json
+docs/table.json
+docs/team_schedule.json
